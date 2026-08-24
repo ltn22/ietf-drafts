@@ -103,16 +103,17 @@ FID, the Direction Indicator, and the position, while the key used
 to access an option entry becomes the space ID, the option number,
 and the position.
 
-Two problems were identified with this approach. First, these keys
-remain large, which may be a penalty when Rule management is used
-(see {{rule-management}}). Second, this key-based approach does not
-guarantee that entries appear in the same order as the
-corresponding fields in the header, whereas RFC 8724 {{RFC8724}}
-mandates that order and recent implementations have shown it to be
-efficient.
+This key-based approach does not guarantee that entries appear in
+the same order as the corresponding fields in the header (all the
+options will appear at the end of the rule), whereas RFC 8724
+{{RFC8724}} mandates that order and recent implementations have
+shown it to be efficient. In addition, these three- or four-element
+keys remain large, which may be a penalty when Rule management is
+used (see {{rule-management}}).
 
-This document redefines the whole compression Rule entry structure
-to provide a uniform way to reference a field entry. A new
+This document deprecates the whole compression Rule entry structure
+in favor of a new one, providing a uniform way to reference a field
+entry. A new
 "entry-index" leaf is introduced, incremented sequentially for each
 entry, which becomes the key of the new "entry-universal" list; the
 "entry-universal" list is defined as "ordered-by user" so that entry order
@@ -174,9 +175,13 @@ x--:(compression) {compression}?
 ~~~
 {: #fig-compression-rule-entry title="Compression Rule Entry: deprecated (RFC 9363) and new (-universal) cases"}
 
-TODO: give a worked example (e.g. a CoAP option) showing how a Rule
-entry is expressed with a Universal Option instead of a per-option
-FID.
+Unlike the deprecated "entry" list, keyed by the compound
+"field-id"/"field-position"/"direction-indicator", "entry-universal"
+is keyed by the single-leaf "entry-index". This makes an entry
+cheap and unambiguous to reference from elsewhere within the same
+Rule, e.g. the "field-length-value" argument of "fl-length-bytes"
+and "fl-length-bits" ({{field-length-functions}}), or a management
+operation targeting it ({{rule-management}}).
 
 ## Space ID
 
@@ -279,8 +284,10 @@ twenty identities are present, each with "status deprecated;".
 | fid-coap-option-no-response | No-Response | 258 | {{RFC7967}} |
 {: #tbl-coap-option-fids title="RFC 9363 per-option CoAP FIDs and their Universal Option replacement"}
 
-YANG (RFC 7950, Section 7.21.2) discourages the use of a definition
-by adding a "status deprecated;" substatement to it. Applied to
+RFC 7950 Section 11 requires that published definitions never be
+removed from a module. Instead, YANG (Section 7.21.2) provides a
+"status deprecated;" substatement to mark a definition as retired
+while keeping it in the module. Applied to
 "fid-coap-option-uri-path":
 
 ~~~ yang
