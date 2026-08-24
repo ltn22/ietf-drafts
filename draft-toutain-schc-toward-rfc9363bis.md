@@ -257,8 +257,22 @@ least one year with a 'deprecated' status before it is changed to
 "current" in RFC 9363, this document marks them "deprecated" rather
 than "obsolete".
 
+These twenty identities MUST NOT be used in a new "entry-universal"
+list ({{fig-compression-rule-entry}}): the "space-id"/
+"universal-value" pair introduced in {{universal-options}}
+supersedes them there. They remain usable only in the deprecated
+"entry" list, for Rules that already reference them.
+
+No SID {{RFC9595}} has been allocated for RFC 9363 so far. Once SIDs
+are allocated for the module, none from the range registered for
+RFC 9363 MUST be allocated to these twenty deprecated identities: a
+SID "immutably maps to EXACTLY one YANG name", so allocating one to
+an identity already superseded by Universal Options would waste it
+permanently, with no way to reclaim it later.
+
 The working copy of the module has been corrected accordingly: the
-twenty identities are present, each with "status deprecated;".
+twenty identities are present, each with "status deprecated;" (see
+{{fig-fid-coap-option-deprecated}}).
 
 | RFC 9363 FID | CoAP Option | Replaced by (space-id-coap / universal-value) | Defined in |
 |---|---|---|---|
@@ -284,11 +298,7 @@ twenty identities are present, each with "status deprecated;".
 | fid-coap-option-no-response | No-Response | 258 | {{RFC7967}} |
 {: #tbl-coap-option-fids title="RFC 9363 per-option CoAP FIDs and their Universal Option replacement"}
 
-RFC 7950 Section 11 requires that published definitions never be
-removed from a module. Instead, YANG (Section 7.21.2) provides a
-"status deprecated;" substatement to mark a definition as retired
-while keeping it in the module. Applied to
-"fid-coap-option-uri-path":
+
 
 ~~~ yang
 identity fid-coap-option-uri-path {
@@ -301,9 +311,9 @@ identity fid-coap-option-uri-path {
     "RFC 7252 The Constrained Application Protocol (CoAP)";
 }
 ~~~
+{: #fig-fid-coap-option-deprecated title="Example: Deprecating a Per-Option CoAP FID (fid-coap-option-uri-path)"}
 
-TODO: apply the same pattern to the other nineteen "fid-coap-option-*"
-identities listed in {{tbl-coap-option-fids}}.
+
 
 ## OSCORE and KUDOS Suboptions {#oscore-kudos-fids}
 
