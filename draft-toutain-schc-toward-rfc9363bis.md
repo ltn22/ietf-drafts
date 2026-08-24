@@ -374,9 +374,13 @@ its own entry; "fl-length-bytes" or "fl-length-bits" can then use
 that entry's "entry-index" to derive the length of the corresponding
 Partial IV or nonce field.
 
-TODO: give a worked example (e.g. the OSCORE Partial IV, whose
-length is carried in "fid-coap-option-oscore-flags-n") showing the
-"field-length"/"field-length-value" pair in a full Rule entry.
+This document also introduces "fl-any", for an entry that is always
+the last one in the Rule (see {{icmpv6}}'s "fid-payload"). Unlike
+"fl-variable", which prefixes its residue with an explicit length
+(see {{variable-length-in-bits}}), "fl-any" accepts a field of any
+length but does not add that prefix when serializing the residue:
+being the last entry, its residue already runs to the end of the
+SCHC packet and needs no delimiter.
 
 ## Example 1: OSCORE outer header
 
@@ -485,7 +489,7 @@ regardless of the unit it counts, a residue counted in bits stays
 within the cheap 4-bit prefix for a wider range of field lengths
 than the same residue counted in bytes would (14 bits vs. 14 bytes).
 The use of "fl-variable-bits" is therefore RECOMMENDED over
-"fl-variable" for residues that are not larger than 14 bits.
+"fl-variable" for residues that are not larger than 14.
 
 ## Example, Non-Byte-Aligned MSB Residue
 
@@ -513,15 +517,52 @@ not.
 
 # ICMPv6 {#icmpv6}
 
-{{I-D.ietf-schc-icmpv6-compression}} defines SCHC compression for
-ICMPv6 {{RFC4443}} headers and introduces eight new Field IDs,
-carried over into the "ietf-schc" YANG module: "fid-icmpv6-type",
-"fid-icmpv6-code", and "fid-icmpv6-checksum", present in every
-ICMPv6 message; "fid-icmpv6-mtu" (Packet Too Big) and
-"fid-icmpv6-pointer" (Parameter Problem), each specific to one error
-message; "fid-icmpv6-identifier" and "fid-icmpv6-sequence" (Echo
-Request/Reply); and "fid-icmpv6-payload" for the data following the
-ICMPv6 header.
+{{I-D.ietf-schc-icmpv6-compression}} defines how SCHC can interact
+with ICMPv6 {{RFC4443}}, either to compress an ICMPv6 message or to
+generate one. This document focuses only on the resulting impact on
+the YANG Data Model. Since an ICMPv6 message may itself carry an
+IPv6 header -- e.g. the offending packet embedded in an error
+message -- the draft introduces new Matching Operators and
+Compression/Decompression Actions to compress that payload; we open
+the discussion on an alternative behavior for it below.
+
+## New FID
+
+{{I-D.ietf-schc-icmpv6-compression}} introduces eight new Field IDs
+for ICMPv6 {{RFC4443}}:
+
+* "fid-icmpv6-type", "fid-icmpv6-code", "fid-icmpv6-checksum":
+  present in every ICMPv6 message.
+* "fid-icmpv6-mtu": present in the Packet Too Big message.
+* "fid-icmpv6-pointer": present in the Parameter Problem message.
+* "fid-icmpv6-identifier", "fid-icmpv6-sequence": present in the
+  Echo Request/Reply message.
+* "fid-icmpv6-payload": the data following the ICMPv6 header.
+
+Two more generic Field IDs, not specific to ICMPv6, are found in the
+working copy of the module alongside them. Being generic, they can
+be used as-is when compressing other protocols:
+
+* "fid-unused": as its name suggests, used to skip an unused part of
+  a header. This matters when parsing and compression happen on the
+  fly, and reinforces the constraint that fields appear in the same
+  order as in the header. Setting its Target Value to 0, its
+  Matching Operator to "ignore", and its Compression/Decompression
+  Action to "not-sent" is RECOMMENDED.
+* "fid-payload": MUST be the last entry of the Rule, matching its
+  position as the packet's trailing payload, and uses the new
+  "fl-any" ({{field-length-functions}}), which accepts any length
+  without prefixing the residue with one, since the last entry's
+  residue already runs to the end of the SCHC packet. With Matching
+  Operator "ignore" and Compression/Decompression Action
+  "value-sent", it behaves exactly as the usual, implicit SCHC
+  behavior, where the payload simply follows the compression
+  residue. But it can also be used to intercept the payload:
+  Compression/Decompression Action "not-sent" then elides it, or
+  another CDA can apply a special treatment to compress it, instead
+  of sending it verbatim.
+
+## New Matching Operators and Compression/Decompression Actions
 
 {{I-D.ietf-schc-icmpv6-compression}} is also the origin of the
 "mo-rule-match"/"mo-rev-rule-match" Matching Operators and the
@@ -540,6 +581,31 @@ packet that triggered it -- a packet that was sent in the opposite
 direction from the error message itself. Compressing that embedded
 copy therefore means matching it against, and generating its
 residue from, a Rule for the reverse direction.
+
+## Alternative: Include IPv6 in Header Format
+
+{{I-D.ietf-schc-icmpv6-compression}} does not specify how
+"mo-rule-match" and "mo-rev-rule-match" identify which Rule to match
+against: it only states that the Matching Operator returns true "if
+a Rule exists in the current Set of Rule to compress it", without a
+normative selection mechanism (RuleID, entry-index, or otherwise).
+
+An alternative, avoiding that open point: instead of matching the
+embedded IPv6 packet against a separate Rule, describe it in place,
+as an ordinary sequence of entries within the same ICMPv6 error
+Rule, using the existing "fid-ipv6-*" Field IDs already used to
+compress a standalone IPv6 header. The embedded header's fields
+would then be compressed with the usual Matching Operators and
+Compression/Decompression Actions ("equal"/"not-sent",
+"ignore"/"value-sent", etc.), exactly as for a header of the same
+protocol found at the start of a packet -- no cross-Rule matching,
+and no new Matching Operator or Compression/Decompression Action,
+would be needed.
+
+This comes at the cost of a longer Rule, with one entry per embedded
+header field rather than a single Payload entry, and does not by
+itself address compressing what follows that embedded IPv6 header
+(e.g. a truncated UDP or TCP header).
 
 ## Example, ICMPv6 Error with Reverse Compression
 
