@@ -50,6 +50,7 @@ informative:
   RFC8824:
   RFC9441:
   RFC8613:
+  RFC4443:
   RFC7252:
   RFC7641:
   RFC7959:
@@ -360,10 +361,209 @@ TODO: give a worked example (e.g. the OSCORE Partial IV, whose
 length is carried in "fid-coap-option-oscore-flags-n") showing the
 "field-length"/"field-length-value" pair in a full Rule entry.
 
-## Other Changes
+## Example 1: OSCORE outer header
 
-"fl-variable-bits" generalizes RFC 8824's "fl-variable" to bit-level
-variable-length fields.
+{{fig-example-rule}} shows an example SCHC Compression Rule (Rule ID
+2, encoded on 5 bits, i.e. "00010") that compresses, in both
+directions, the outer CoAP header of a CoAP/OSCORE message.
+
+The server is located on the Application side and the client on the
+Device side. In OSCORE, the client's request carries an OSCORE
+option with the security parameters, while the server's response
+carries an empty OSCORE option; the Token links the response to its
+request.
+
+The first column is new and not defined in RFC 8724 {{RFC8724}}: it
+numbers the entries in the rule. The names in the other columns are
+the ones defined in the YANG module, without their prefix ("fid-",
+"fl-", "mo-", "cda-"), for better legibility.
+
+~~~
++----+----------------+----------+----+----+----+--------+----------+
+| #  | Field          | FL       | FP | DI | TV | MO     | CDA      |
++----+----------------+----------+----+----+----+--------+----------+
+| 0  | coap-version   | 2        | 1  | Bi | 01 | equal  | not-sent |
+| 1  | coap-type      | 2        | 1  | Bi | -  | ignore | value-   |
+|    |                |          |    |    |    |        | sent     |
+| 2  | coap-tkl       | 4        | 1  | Bi | -  | ignore | value-   |
+|    |                |          |    |    |    |        | sent     |
+| 3  | coap-code      | 8        | 1  | Up | 02 | equal  | not-sent |
+| 4  | coap-code      | 8        | 1  | Dw | 44 | equal  | not-sent |
+| 5  | coap-mid       | 16       | 1  | Bi | 00 | ignore | value-   |
+|    |                |          |    |    |    |        | sent     |
+| 6  | coap-token     | length-  | 1  | Bi | -  | ignore | value-   |
+|    |                | bytes(2) |    |    |    |        | sent     |
+| 7  | coap-option-   | 5        | 1  | Up | 01 | equal  | not-sent |
+|    | oscore-flags-  |          |    |    |    |        |          |
+|    | flags          |          |    |    |    |        |          |
+| 8  | coap-option-   | 3        | 1  | Up | 01 | equal  | not-sent |
+|    | oscore-flags-n |          |    |    |    |        |          |
+| 9  | coap-option-   | length-  | 1  | Up | -  | ignore | value-   |
+|    | oscore-piv     | bytes(8) |    |    |    |        | sent     |
+| 10 | coap-option-   | 0        | 1  | Up | 00 | equal  | not-sent |
+|    | oscore-kidctx  |          |    |    |    |        |          |
+| 11 | coap-option-   | var      | 1  | Up | -  | ignore | value-   |
+|    | oscore-kid     |          |    |    |    |        | sent     |
+| 12 | space-id-      | 0        | 1  | Dw | -  | equal  | not-sent |
+|    | coap(9)        |          |    |    |    |        |          |
++----+----------------+----------+----+----+----+--------+----------+
+~~~
+{: #fig-example-rule title="Example Compression Rule for an Outer CoAP/OSCORE Header"}
+
+This rule uses the new capabilities introduced above:
+
+* The Token field's length no longer uses the legacy
+  "fl-token-length" function; instead, "fl-length-bytes" is used,
+  with its parameter set to 2, referring to entry 2, "coap-tkl".
+
+* The OSCORE option's content is split into sub-fields. Note that
+  the Flags field is itself split between "coap-option-oscore-flags-
+  flags" and "coap-option-oscore-flags-n", the latter carrying the
+  length of the Partial IV field.
+
+* The Partial IV length is likewise given by "fl-length-bytes", this
+  time with its parameter set to 8, referring to entry 8,
+  "coap-option-oscore-flags-n".
+
+* In the other direction, the OSCORE option is empty and is
+  compressed using a Universal Option, indicating option number 9.
+
+TO BE DISCUSSED: the "h" flag is set to 0, meaning the KID Context
+is normally absent; should entry 10, "coap-option-oscore-kidctx",
+still appear in the rule in that case? When present, the KID
+Context value is itself encoded as a length byte followed by the
+context bytes. Should this document keep it as a single
+"coap-option-oscore-kidctx" entry of variable length -- which would
+send that length twice, once through SCHC's own variable-length
+encoding and once through the length byte already embedded in the
+OSCORE encoding -- or split it into two entries, a length indicator
+and the context value, with the latter using "fl-length-bytes" to
+point to the former?
+
+# Variable Length in Bits {#variable-length-in-bits}
+
+"fl-variable-bits" generalizes RFC 8824's {{RFC8824}} "fl-variable"
+to bit-level variable-length fields, the same way
+{{I-D.ietf-schc-8824-update}}'s "var_bit" function does. RFC 8724
+{{RFC8724}} requires the "MSB" matching operator's parameter to be a
+multiple of 8 bits when applied to a byte-counted variable-length
+field ("fl-variable"): the residue sent with the "LSB" action would
+otherwise not be an integral number of bytes, and "fl-variable"'s
+length prefix, itself byte-counted, could not express it.
+"fl-variable-bits" removes that restriction by counting the
+residue's length prefix in bits instead of bytes.
+
+The length prefix itself is encoded the same way as for
+"fl-variable", following RFC 8724 {{RFC8724}}, Section 7.4.2: sizes
+between 0 and 14 (in the unit defined by the FL -- bytes for
+"fl-variable", bits for "fl-variable-bits") are encoded as a 4-bit
+unsigned integer; sizes between 15 and 254 are encoded as 0b1111
+followed by an 8-bit unsigned integer; larger sizes are encoded as
+0xfff followed by a 16-bit unsigned integer. Only the counted unit
+changes between the two functions, not the escape structure of the
+length prefix.
+
+Because that escape threshold is the same numeric value, 14,
+regardless of the unit it counts, a residue counted in bits stays
+within the cheap 4-bit prefix for a wider range of field lengths
+than the same residue counted in bytes would (14 bits vs. 14 bytes).
+The use of "fl-variable-bits" is therefore RECOMMENDED over
+"fl-variable" for residues that are not larger than 14 bits.
+
+## Example, Non-Byte-Aligned MSB Residue
+
+The case "var_bit" and "fl-variable-bits" actually address is a
+variable-length field, whose residue needs an explicit length
+prefix. {{I-D.ietf-schc-8824-update}} itself has such an example, for
+the OSCORE "kid" sub-field (entry "coap-option-oscore-kid" in
+{{fig-example-rule}}, which instead sends it unmatched):
+{{fig-example-msb}}. "msb(44)" matches the KID's most significant 44
+bits against the 6-byte (48-bit) target value; only the remaining 4
+bits  are sent with "lsb". "var_bit" (this
+document's "fl-variable-bits") carries that 4-bit length in its
+residue length prefix; RFC 8824's byte-counted "fl-variable" could
+not.
+
+~~~
++----------------+-----------+----+----+----------+---------+-----+
+| Field          | FL        | FP | DI | TV       | MO      | CDA |
++----------------+-----------+----+----+----------+---------+-----+
+| coap-option-   | variable- | 1  | Up | 0x636c69 | msb(44) | lsb |
+| oscore-kid     | bits      |    |    | 656e70   |         |     |
++----------------+-----------+----+----+----------+---------+-----+
+~~~
+{: #fig-example-msb title="Non-Byte-Aligned MSB Residue on a Variable-Length Field (adapted from I-D.ietf-schc-8824-update)"}
+
+# ICMPv6 {#icmpv6}
+
+{{I-D.ietf-schc-icmpv6-compression}} defines SCHC compression for
+ICMPv6 {{RFC4443}} headers and introduces eight new Field IDs,
+carried over into the "ietf-schc" YANG module: "fid-icmpv6-type",
+"fid-icmpv6-code", and "fid-icmpv6-checksum", present in every
+ICMPv6 message; "fid-icmpv6-mtu" (Packet Too Big) and
+"fid-icmpv6-pointer" (Parameter Problem), each specific to one error
+message; "fid-icmpv6-identifier" and "fid-icmpv6-sequence" (Echo
+Request/Reply); and "fid-icmpv6-payload" for the data following the
+ICMPv6 header.
+
+{{I-D.ietf-schc-icmpv6-compression}} is also the origin of the
+"mo-rule-match"/"mo-rev-rule-match" Matching Operators and the
+"cda-compress-sent"/"cda-rev-compress-sent" Compression/
+Decompression Actions, already listed in
+{{changes-from-rfc-9363}}. "mo-rule-match" returns true if the
+Target Value matches another Rule, keeping the Up/Down direction;
+"mo-rev-rule-match" does the same but reversing that direction;
+"cda-compress-sent" and "cda-rev-compress-sent" send a compressed
+version of the Target Value, using respectively the matched Rule or
+its direction-reversed counterpart.
+
+The reversed forms exist because, per RFC 4443 {{RFC4443}}, an
+ICMPv6 error message carries back as much as possible of the IPv6
+packet that triggered it -- a packet that was sent in the opposite
+direction from the error message itself. Compressing that embedded
+copy therefore means matching it against, and generating its
+residue from, a Rule for the reverse direction.
+
+## Example, ICMPv6 Error with Reverse Compression
+
+{{fig-example-icmpv6}} adapts the "Time Exceeded" Rule from
+{{I-D.ietf-schc-icmpv6-compression}}: the Type and Code identify the
+error, the Checksum is recomputed on decompression, and the Payload
+-- the offending IPv6 packet -- is matched and compressed against
+its own (Up) Rule with "rev-rule-match" and "rev-compress-sent",
+instead of being sent in full.
+
+~~~
++------------+-----------+----+----+-------+-----------+-----------+
+| Field      | FL        | FP | DI | TV    | MO        | CDA       |
++------------+-----------+----+----+-------+-----------+-----------+
+| icmpv6-    | 8         | 1  | Dw | 3     | equal     | not-sent  |
+| type       |           |    |    |       |           |           |
+| icmpv6-    | 8         | 1  | Dw | [0,1] | match-    | mapping-  |
+| code       |           |    |    |       | mapping   | sent      |
+| icmpv6-    | 16        | 1  | Dw | -     | ignore    | compute   |
+| checksum   |           |    |    |       |           |           |
+| icmpv6-    | variable- | 1  | Dw | 0     | rev-rule- | rev-      |
+| payload    | bits      |    |    |       | match     | compress- |
+|            |           |    |    |       |           | sent      |
++------------+-----------+----+----+-------+-----------+-----------+
+~~~
+{: #fig-example-icmpv6 title="ICMPv6 Error Compressed Against a Reverse-Direction Rule (adapted from I-D.ietf-schc-icmpv6-compression)"}
+
+The Checksum's exact CDA identity is left as "compute" above; the
+cited draft only names it generically ("compute-*") and this
+document does not further resolve it. The Checksum field length (16
+bits) follows RFC 4443 {{RFC4443}}, not the cited draft's Rule table,
+which appears to use a placeholder FL for that row.
+{{I-D.ietf-schc-icmpv6-compression}} states that the Payload
+residue's length prefix is "4 or 12" bits, matching the escape-coded
+prefix from {{variable-length-in-bits}}, since the embedded
+compressed IPv6 header is not generally byte-aligned; that document
+predates "fl-variable-bits" and labels the field simply "variable",
+but the bit-counted prefix it describes is exactly what
+"fl-variable-bits" is for, and this document uses it here instead.
+
+# Other Changes
 
 TODO: list and describe other, smaller changes to the module that do
 not warrant their own subsection (e.g. the new "mo-rule-match",
@@ -381,7 +581,7 @@ TODO: introduce Rule management (the "management" feature, the
 "nature-management" Rule nature, and the "duplicate-rule" RPC), and
 elaborate on how "entry-index" is used in management operations.
 
-# Changes from RFC 9363
+# Changes from RFC 9363 {#changes-from-rfc-9363}
 
 This document makes the following changes to the SCHC YANG data
 model defined in RFC 9363 {{RFC9363}}:
@@ -405,9 +605,13 @@ model defined in RFC 9363 {{RFC9363}}:
 
 * New Matching Operators ("mo-rule-match", "mo-rev-rule-match") and
   Compression/Decompression Actions ("cda-compress-sent",
-  "cda-rev-compress-sent") are introduced, allowing a Target Value
-  to be matched, or a compressed value to be sent, while keeping or
+  "cda-rev-compress-sent"), from {{I-D.ietf-schc-icmpv6-compression}}
+  (see {{icmpv6}}), are introduced, allowing a Target Value to be
+  matched, or a compressed value to be sent, while keeping or
   reversing the Up/Down direction.
+
+* Eight new Field IDs for ICMPv6 {{RFC4443}}, from
+  {{I-D.ietf-schc-icmpv6-compression}} (see {{icmpv6}}).
 
 * A "management" feature and Rule nature ("nature-management") are
   introduced, together with the "duplicate-rule" RPC, used to
@@ -426,7 +630,6 @@ following model additions, also present in the working copy of the
 module but not explicitly requested for this abstract, are in scope
 for this bis document or belong in a separate draft:
 
-* Field IDs for ICMPv6 {{I-D.ietf-schc-icmpv6-compression}}.
 * Field IDs for CoAP/OSCORE {{RFC8613}}, including the KUDOS
   suboptions {{I-D.ietf-core-oscore-key-update}}
   {{I-D.ietf-schc-8824-update}}.
