@@ -582,69 +582,184 @@ direction from the error message itself. Compressing that embedded
 copy therefore means matching it against, and generating its
 residue from, a Rule for the reverse direction.
 
-## Alternative: Include IPv6 in Header Format
-
-{{I-D.ietf-schc-icmpv6-compression}} does not specify how
-"mo-rule-match" and "mo-rev-rule-match" identify which Rule to match
-against: it only states that the Matching Operator returns true "if
-a Rule exists in the current Set of Rule to compress it", without a
-normative selection mechanism (RuleID, entry-index, or otherwise).
-
-An alternative, avoiding that open point: instead of matching the
-embedded IPv6 packet against a separate Rule, describe it in place,
-as an ordinary sequence of entries within the same ICMPv6 error
-Rule, using the existing "fid-ipv6-*" Field IDs already used to
-compress a standalone IPv6 header. The embedded header's fields
-would then be compressed with the usual Matching Operators and
-Compression/Decompression Actions ("equal"/"not-sent",
-"ignore"/"value-sent", etc.), exactly as for a header of the same
-protocol found at the start of a packet -- no cross-Rule matching,
-and no new Matching Operator or Compression/Decompression Action,
-would be needed.
-
-This comes at the cost of a longer Rule, with one entry per embedded
-header field rather than a single Payload entry, and does not by
-itself address compressing what follows that embedded IPv6 header
-(e.g. a truncated UDP or TCP header).
-
-## Example, ICMPv6 Error with Reverse Compression
+### Example, ICMPv6 Error with Reverse Compression
 
 {{fig-example-icmpv6}} adapts the "Time Exceeded" Rule from
-{{I-D.ietf-schc-icmpv6-compression}}: the Type and Code identify the
-error, the Checksum is recomputed on decompression, and the Payload
--- the offending IPv6 packet -- is matched and compressed against
-its own (Up) Rule with "rev-rule-match" and "rev-compress-sent",
-instead of being sent in full.
+{{I-D.ietf-schc-icmpv6-compression}}, prefixed with the outer IPv6
+header carrying the ICMPv6 message itself (as in {{fig-alt-icmpv6}}
+below): the Type and Code identify the error, the Checksum is
+recomputed on decompression, the 32-bit "Unused" field mandated by
+RFC 4443 {{RFC4443}} for this message is elided with "fid-unused"
+({{icmpv6}}), and the Payload -- the offending IPv6 packet -- is
+matched and compressed against its own (Up) Rule with
+"rev-rule-match" and "rev-compress-sent", instead of being sent in
+full.
 
 ~~~
-+------------+-----------+----+----+-------+-----------+-----------+
-| Field      | FL        | FP | DI | TV    | MO        | CDA       |
-+------------+-----------+----+----+-------+-----------+-----------+
-| icmpv6-    | 8         | 1  | Dw | 3     | equal     | not-sent  |
-| type       |           |    |    |       |           |           |
-| icmpv6-    | 8         | 1  | Dw | [0,1] | match-    | mapping-  |
-| code       |           |    |    |       | mapping   | sent      |
-| icmpv6-    | 16        | 1  | Dw | -     | ignore    | compute   |
-| checksum   |           |    |    |       |           |           |
-| icmpv6-    | variable- | 1  | Dw | 0     | rev-rule- | rev-      |
-| payload    | bits      |    |    |       | match     | compress- |
-|            |           |    |    |       |           | sent      |
-+------------+-----------+----+----+-------+-----------+-----------+
++--------------+-----------+----+----+--------+----------+-----------+
+| Field        | FL        | FP | DI | TV     | MO       | CDA       |
++--------------+-----------+----+----+--------+----------+-----------+
++------------------------ Outer IPv6 header -------------------------+
+| ipv6-version | 4         | 1  | Dw | 6      | equal    | not-sent  |
+| ipv6-        | 8         | 1  | Dw | 0      | ignore   | not-sent  |
+| trafficclass |           |    |    |        |          |           |
+| ipv6-        | 20        | 1  | Dw | 0      | ignore   | not-sent  |
+| flowlabel    |           |    |    |        |          |           |
+| ipv6-        | 16        | 1  | Dw | -      | ignore   | compute   |
+| payload-     |           |    |    |        |          |           |
+| length       |           |    |    |        |          |           |
+| ipv6-        | 8         | 1  | Dw | 58     | equal    | not-sent  |
+| nextheader   |           |    |    |        |          |           |
+| ipv6-        | 8         | 1  | Dw | 1      | equal    | not-sent  |
+| hoplimit     |           |    |    |        |          |           |
+| ipv6-        | 64        | 1  | Dw | aaaa:: | equal    | not-sent  |
+| devprefix    |           |    |    |        |          |           |
+| ipv6-deviid  | 64        | 1  | Dw | ::zzzz | equal    | not-sent  |
+| ipv6-        | 64        | 1  | Dw | -      | ignore   | value-    |
+| appprefix    |           |    |    |        |          | sent      |
+| ipv6-appiid  | 64        | 1  | Dw | -      | ignore   | value-    |
+|              |           |    |    |        |          | sent      |
++-------------------------- ICMPv6 header ---------------------------+
+| icmpv6-type  | 8         | 1  | Dw | 3      | equal    | not-sent  |
+| icmpv6-code  | 8         | 1  | Dw | [0,1]  | match-   | mapping-  |
+|              |           |    |    |        | mapping  | sent      |
+| icmpv6-      | 16        | 1  | Dw | -      | ignore   | compute   |
+| checksum     |           |    |    |        |          |           |
+| unused       | 32        | 1  | Dw | 0      | ignore   | not-sent  |
+| icmpv6-      | variable- | 1  | Dw | 0      | rev-     | rev-      |
+| payload      | bits      |    |    |        | rule-    | compress- |
+|              |           |    |    |        | match    | sent      |
++--------------+-----------+----+----+--------+----------+-----------+
 ~~~
 {: #fig-example-icmpv6 title="ICMPv6 Error Compressed Against a Reverse-Direction Rule (adapted from I-D.ietf-schc-icmpv6-compression)"}
 
-The Checksum's exact CDA identity is left as "compute" above; the
-cited draft only names it generically ("compute-*") and this
-document does not further resolve it. The Checksum field length (16
-bits) follows RFC 4443 {{RFC4443}}, not the cited draft's Rule table,
-which appears to use a placeholder FL for that row.
-{{I-D.ietf-schc-icmpv6-compression}} states that the Payload
-residue's length prefix is "4 or 12" bits, matching the escape-coded
-prefix from {{variable-length-in-bits}}, since the embedded
-compressed IPv6 header is not generally byte-aligned; that document
-predates "fl-variable-bits" and labels the field simply "variable",
-but the bit-counted prefix it describes is exactly what
-"fl-variable-bits" is for, and this document uses it here instead.
+{{fig-example-icmpv6}} shows a Rule inspired by
+{{I-D.ietf-schc-icmpv6-compression}}. One difference here is the
+addition of the "unused" entry, skipping the 32 bits following the
+Checksum. The remaining bytes are assigned to "icmpv6-payload" and
+contain the original (invoking) header. If a Rule in the context
+matches that payload, compression applies to it as well.
+
+{{fig-icmpv6-residue}} shows the resulting residue: the RuleID of
+the ICMPv6 message, followed by its own compression residue, then a
+length for the variable-length structure, the RuleID of the Rule
+that compresses the original header, that Rule's compression
+residue, the remaining, uncompressed payload, and, since this
+concludes the SCHC packet, the final padding bits ({{RFC8724}}) that
+must bring it to a byte boundary, since "Length" here counts bytes,
+not bits: spanning the inner RuleID, header residue, and payload
+together, it is typically well above the 14-bit/byte threshold below
+which "fl-variable-bits" is RECOMMENDED ({{variable-length-in-bits}}),
+so counting it in bytes keeps that length prefix itself compact.
+
+~~~
+                             |----------------Length-----------------|
++---------+---------+--------+---------+---------+---------+---------+
+| RuleID  | IPv6/   | Length | RuleID  | IPv6/   | Payload | Padding |
+| (outer) | ICMPv6  |        | (inner) | UDP     |         |         |
+|         | residue |        |         | residue |         |         |
++---------+---------+--------+---------+---------+---------+---------+
+~~~
+{: #fig-icmpv6-residue title="Residue Layout for an ICMPv6 Error Compressing an Embedded, Compressed Header"}
+
+## Alternative: Include IPv6 in Header Format
+
+An alternative to {{I-D.ietf-schc-icmpv6-compression}} is to
+continue the compression process inside the ICMPv6 payload, instead
+of matching it against a separate Rule. {{fig-alt-icmpv6}} shows the
+resulting Rule. 
+
+The invoking header's Field Descriptors are distinct from the outer
+header's, and are designed from the ICMPv6 message's point of view.
+
+Fields designed with an application or device role remain unchanged
+(e.g. "ipv6-deviid" or "udp-app-port"), but the direction is
+reversed. Field Position is also incremented if a field is repeated,
+as for the IPv6 fields in the example.
+
+The compression mechanism MUST also include the port numbers: an
+ICMPv6 error message exists to inform the source that a given flow
+failed to reach its destination, and the port numbers are part of
+that flow's identification. It is RECOMMENDED to be able to fully
+reconstruct the Layer 4 header this way, not just the ports.
+
+~~~
++--------------+-----+----+----+--------+--------+----------+
+| Field        | FL  | FP | DI | TV     | MO     | CDA      |
++--------------+-----+----+----+--------+--------+----------+
++-------------------- Outer IPv6 header --------------------+
+| ipv6-version | 4   | 1  | Bi | 6      | equal  | not-sent |
+| ipv6-        | 8   | 1  | Bi | 0      | ignore | not-sent |
+| trafficclass |     |    |    |        |        |          |
+| ipv6-        | 20  | 1  | Bi | 0      | ignore | not-sent |
+| flowlabel    |     |    |    |        |        |          |
+| ipv6-        | 16  | 1  | Bi | -      | ignore | compute  |
+| payload-     |     |    |    |        |        |          |
+| length       |     |    |    |        |        |          |
+| ipv6-        | 8   | 1  | Bi | 58     | equal  | not-sent |
+| nextheader   |     |    |    |        |        |          |
+| ipv6-        | 8   | 1  | Up | -      | ignore | value-   |
+| hoplimit     |     |    |    |        |        | sent     |
+| ipv6-        | 8   | 1  | Dw | 1      | equal  | not-sent |
+| hoplimit     |     |    |    |        |        |          |
+| ipv6-        | 64  | 1  | Bi | aaaa:: | equal  | not-sent |
+| devprefix    |     |    |    |        |        |          |
+| ipv6-deviid  | 64  | 1  | Bi | ::zzzz | equal  | not-sent |
+| ipv6-        | 64  | 1  | Bi | -      | ignore | value-   |
+| appprefix    |     |    |    |        |        | sent     |
+| ipv6-appiid  | 64  | 1  | Bi | -      | ignore | value-   |
+|              |     |    |    |        |        | sent     |
++---------------------- ICMPv6 header ----------------------+
+| icmpv6-type  | 8   | 1  | Bi | 1      | equal  | not-sent |
+| icmpv6-code  | 8   | 1  | Bi | 4      | equal  | not-sent |
+| icmpv6-      | 16  | 1  | Bi | 0      | ignore | compute  |
+| checksum     |     |    |    |        |        |          |
+| unused       | 32  | 1  | Bi | 0      | ignore | not-sent |
++------------- Invoking (embedded) IPv6 header -------------+
+| ipv6-version | 4   | 2  | Bi | 6      | equal  | not-sent |
+| ipv6-        | 8   | 2  | Bi | 0      | ignore | not-sent |
+| trafficclass |     |    |    |        |        |          |
+| ipv6-        | 20  | 2  | Bi | 0      | ignore | not-sent |
+| flowlabel    |     |    |    |        |        |          |
+| ipv6-        | 16  | 2  | Bi | -      | ignore | compute  |
+| payload-     |     |    |    |        |        |          |
+| length       |     |    |    |        |        |          |
+| ipv6-        | 8   | 2  | Bi | 17     | equal  | not-sent |
+| nextheader   |     |    |    |        |        |          |
+| ipv6-        | 8   | 2  | Dw | 1      | equal  | not-sent |
+| hoplimit     |     |    |    |        |        |          |
+| ipv6-        | 8   | 2  | Up | -      | ignore | value-   |
+| hoplimit     |     |    |    |        |        | sent     |
+| ipv6-        | 64  | 2  | Bi | aaaa:: | equal  | not-sent |
+| devprefix    |     |    |    |        |        |          |
+| ipv6-deviid  | 64  | 2  | Bi | ::zzzz | equal  | not-sent |
+| ipv6-        | 64  | 2  | Bi | -      | ignore | value-   |
+| appprefix    |     |    |    |        |        | sent     |
+| ipv6-appiid  | 64  | 2  | Bi | -      | ignore | value-   |
+|              |     |    |    |        |        | sent     |
++------------- Invoking (embedded) UDP header --------------+
+| udp-dev-port | 16  | 1  | Bi | 5683   | equal  | not-sent |
+| udp-app-port | 16  | 1  | Bi | -      | ignore | value-   |
+|              |     |    |    |        |        | sent     |
+| udp-length   | 16  | 1  | Bi | 0      | ignore | compute  |
+| udp-checksum | 16  | 1  | Bi | 0      | ignore | compute  |
++--------------+-----+----+----+--------+--------+----------+
+| payload      | any | 1  | Bi | -      | ignore | not-sent |
++--------------+-----+----+----+--------+--------+----------+
+~~~
+{: #fig-alt-icmpv6 title="Alternative ICMPv6 Rule Embedding the Invoking IPv6/UDP Header In Place"}
+
+
+The compression result should be better, since there is no need to
+send a variable-length residue and a second RuleID, at the cost of
+a more complex Rule definition.
+
+~~~
++----------+------------------------------------------+
+|  RuleID  |       IPv6/ICMPv6/IPv6/UDP residue       |
++----------+------------------------------------------+
+~~~
+{: #fig-alt-icmpv6-residue title="Residue Layout for the Alternative ICMPv6 Rule"}
 
 # Other Changes
 
