@@ -761,7 +761,7 @@ a more complex Rule definition.
 ~~~
 {: #fig-alt-icmpv6-residue title="Residue Layout for the Alternative ICMPv6 Rule"}
 
-# Other Changes
+# compound ack 
 
 TODO: list and describe other, smaller changes to the module that do
 not warrant their own subsection (e.g. the new "mo-rule-match",
@@ -848,55 +848,7 @@ TODO: bring over / update the narrative text, tree diagrams, and
 examples from RFC 9363 Section 4 for each subsection below, checking
 against RFC 9363 that nothing already defined there is dropped.
 
-## Features
 
-Carried over unchanged from RFC 9363: "compression", "fragmentation".
-New in this document: "management" (guards the "management" Rule
-nature and the "duplicate-rule" RPC).
-
-## Field ID (FID), Space ID, and Field Length (FL) Identities {#fl-identities}
-
-* "fid-base-type" and its derived identities: unchanged from
-  RFC 9363 for IPv6 ("fid-ipv6-*"), UDP ("fid-udp-*"), and CoAP
-  ("fid-coap-*", including the OSCORE suboptions).
-
-  TODO: confirm every RFC 9363 "fid-*" identity is still present
-  and unchanged (name, base, description) in the working module.
-
-* "space-field-id-base-type": new common base for "fid-base-type"
-  and the new "space-id-base-type", used to unify regular fields
-  and Universal Options in "compression-rule-entry" (see
-  {{compression-rule-entry}}).
-
-* "space-id-base-type" and its derived identities (e.g.
-  "space-id-coap"): new, identify a Universal Option space; used
-  together with a numeric "universal-value" in place of a Field ID.
-
-* "fl-base-type" and its derived identities: "fl-variable" and
-  "fl-token-length" are unchanged from RFC 9363. New identities:
-  "fl-variable-bits", "fl-length-bytes", "fl-length-bits".
-
-## Matching Operators and Compression/Decompression Actions
-
-* "mo-base-type": "mo-equal", "mo-ignore", "mo-msb", and
-  "mo-match-mapping" are unchanged from RFC 9363. New identities:
-  "mo-rule-match", "mo-rev-rule-match".
-
-* "cda-base-type": "cda-not-sent", "cda-value-sent", "cda-lsb",
-  "cda-mapping-sent", "cda-compute", "cda-deviid", and "cda-appiid"
-  are unchanged from RFC 9363. New identities: "cda-compress-sent",
-  "cda-rev-compress-sent".
-
-## Compression Rule Entry {#compression-rule-entry}
-
-See {{universal-options}} for the redefinition of the compression
-Rule entry key (the "entry-index" leaf) and of the "field-or-space"
-choice, and for why this is introduced as a new, parallel
-"compression-rule-entry-universal"/"compression-content-universal"/"compression-universal"
-structure rather than by modifying the RFC 9363 structure in place.
-
-TODO: describe the migration path from an RFC 9363 Rule (using the
-deprecated "compression" case) to the new "compression-universal" case.
 
 ## Fragmentation Rule Content
 
@@ -906,19 +858,6 @@ Compound ACK parameters ({{RFC9441}}).
 TODO: confirm against RFC 9363 that no fragmentation node was
 dropped.
 
-## Management Rule Content
-
-New "management-content" grouping (guard-period timer), used by the
-new "nature-management" Rule nature and gated by the "management"
-feature.
-
-## RPCs
-
-New "duplicate-rule" RPC: duplicates an existing Rule (input
-"from") into a new RuleID (input "to"), optionally modified via a
-CORECONF iPatch ("ipatch-sequence"), and returns a "status".
-
-TODO: describe the RPC's semantics and error cases in prose.
 
 ## Manual SID Allocation
 
