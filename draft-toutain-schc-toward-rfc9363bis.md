@@ -804,30 +804,11 @@ through the "management" feature and the "nature-management" Rule
 nature. A management Rule is itself a compression Rule, but kept
 separate from regular compression Rules: IPv6 addresses and port
 numbers are specially dedicated to identifying it, and MAY overlap
-with values used by regular compression Rules. Management Rules are
+with values used by regular compression Rules; the nature of the
+Rule is what allows distinguishing them. Management Rules are
 the only ones allowed to access the Static Context, to read, create,
 update, or delete Rules. Only the "entry-universal" structure
 supports management Rules; the deprecated "entry" list does not.
-
-Until the module's 2026-08-29 revision, this was not reflected: its
-"choice nature" only had cases for "fragmentation", "compression",
-and "compression-universal" -- none for "nature-management". Adding
-a separate "case management" that also "uses
-compression-content-universal" would have instantiated a second
-"entry-universal" list at a different schema path, requiring its own
-set of SIDs {{RFC9595}} for a structure otherwise identical to the
-existing one. {{fig-management-in-compression-universal}} shows how
-that revision instead widens the existing "compression-universal"
-case to serve both natures, reusing the same "entry-universal" list
--- and its existing SIDs -- for management Rules, distinguished from
-compression Rules only by the sibling "rule-nature" leaf. The "must"
-is widened where it already lives, inside the
-"compression-content-universal" grouping's "entry-universal" list
-(that grouping is only used once, so there is no other usage to
-disturb), rather than through a "refine" at the use site: a "refine"
-can only add "must" statements, not loosen the one already baked
-into the grouping, so it would leave the original,
-compression-only constraint in force.
 
 "guard-period", the management timer, is not really a property of
 any single Rule: it applies to the SCHC context as a whole. Nesting
@@ -881,9 +862,11 @@ list rule {
 ~~~
 {: #fig-management-in-compression-universal title="Widening compression-universal to Also Serve Management Rules (module revision 2026-08-29)"}
 
-TO BE DISCUSSED: "guard-period" moving into a context-wide
-container assumes fragmentation's own timers are unrelated to it and
-already covered elsewhere; this has not been checked.
+For management, a management context is added: its values are
+common to all SCHC Rules in that management instance, rather than
+specific to any one Rule. Currently, the context contains a guard
+period, defining the time before a RuleID can be reused by
+management when a new Rule is created.
 
 Different management operations can be defined to act on Rules or on
 individual elements of a Rule. For example, the "duplicate-rule" RPC
