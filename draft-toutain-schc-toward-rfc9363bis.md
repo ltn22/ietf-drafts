@@ -63,27 +63,37 @@ informative:
 
 --- abstract
 
-This document obsoletes RFC 9363, "A YANG Data Model for Static
-Context Header Compression (SCHC)". It redefines the SCHC
-compression rules to provide more flexibility through the use of
-Universal Options, which allow identifiers to be added to or
-removed from a Rule Description depending on the Universal Options
-in use. This document also introduces new length-related Matching
-Operators (MOs) and Compression/Decompression Actions (CDAs),
-defines the RPCs used for SCHC management, and specifies a
-mechanism for the manual allocation of YANG Schema Item
-iDentifiers (SIDs).
+This document is not a revision of RFC 9363, "A YANG Data Model for
+Static Context Header Compression (SCHC)": it identifies changes --
+additions to, and removals from, its YANG data model -- motivated by
+discussions in the SCHC working group and by drafts published since
+RFC 9363. These changes include more flexible compression Rule
+entries through the use of Universal Options, which allow
+identifiers to be added to or removed from a Rule Description
+depending on the Universal Options in use; some new Field Length
+functions, and new Matching Operators (MOs) and
+Compression/Decompression Actions (CDAs); and a mechanism for the
+manual allocation of YANG Schema Item iDentifiers (SIDs). Once the
+working group agrees on the resulting wording, these changes are
+intended to be incorporated into a future revision of RFC 9363.
 
 --- middle
 
 # Introduction
 
-RFC 9363 {{RFC9363}} defines a YANG data model for the Static
-Context Header Compression (SCHC) {{RFC8724}}. This document
-updates that data model.
+This document is not itself a revision of RFC 9363 {{RFC9363}}, the
+YANG data model for Static Context Header Compression (SCHC)
+{{RFC8724}}. Instead, it identifies the items that should be added
+to, or removed from, that data model, taking into account
+discussions held in the SCHC working group and drafts published
+since RFC 9363 (e.g. {{I-D.ietf-schc-universal-option}},
+{{I-D.ietf-schc-8824-update}}, and
+{{I-D.ietf-schc-icmpv6-compression}}). Once the working group agrees
+on the resulting wording, a new revision of RFC 9363 will be issued
+to formally incorporate it.
 
-TODO: describe the motivation for this bis document (what changed
-since RFC 9363, why an update is needed, and what stays compatible).
+This document also introduces the framework for Rule management; the
+details of Rule management are left to separate documents.
 
 # Universal Options {#universal-options}
 
@@ -826,7 +836,7 @@ TODO: expand each item above with a short rationale and a pointer
 to the corresponding section of this document. Confirm whether the
 following model additions, also present in the working copy of the
 module but not explicitly requested for this abstract, are in scope
-for this bis document or belong in a separate draft:
+for this document or belong in a separate draft:
 
 * Field IDs for CoAP/OSCORE {{RFC8613}}, including the KUDOS
   suboptions {{I-D.ietf-core-oscore-key-update}}
