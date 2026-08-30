@@ -60,6 +60,8 @@ informative:
   I-D.ietf-schc-8824-update:
   I-D.ietf-schc-icmpv6-compression:
   I-D.ietf-core-oscore-key-update:
+  I-D.toutain-schc-sid-allocation:
+  I-D.toutain-core-private-sid-translation:
 
 --- abstract
 
@@ -881,14 +883,75 @@ to a SCHC Context -- is specified separately.
 
 # Manual SID Allocation
 
-TODO: describe the manual SID allocation mechanism: SIDs are first
-generated automatically (e.g. via "pyang --sid-generate-file"), then
-remapped to a stable, manually curated allocation table (module,
-namespace, identifier) so that previously published SIDs do not
-shift when the module evolves (fields added, removed, or
-deprecated). Reference {{RFC9595}} for the SID file format and
-describe the augmentation used to carry type information per SID
-item.
+The mapping between YANG identifiers and SID {{RFC9595}} values can
+be generated automatically with the "pyang" tool (e.g. via "pyang
+--sid-generate-file"). This automatic allocation, however, is not
+optimized.
+
+The first goal of a manual allocation is to minimize the delta
+between SIDs used together as CBOR/CORECONF keys, so that delta
+encodes on a single byte (i.e., a value between -24 and +23).
+{{I-D.toutain-schc-sid-allocation}} shows that pyang's automatic,
+alphabetical assignment defeats this: for example, "rule-id-value",
+"rule-id-length", and "rule-nature", present in every Rule, end
+up with a delta higher than 23 from their base, so every single Rule
+pays for a 2-byte delta where a 1-byte one would do.
+
+{{I-D.toutain-schc-sid-allocation}} makes two recommendations to
+keep this delta small. First, keep data-carrying and
+identity-carrying nodes in separate SID ranges, since they are
+rarely encoded together; the distance between the two can then be as
+large as 255, allowing a 2-byte delta only where it does not matter.
+Second, leave some SIDs unused around the SCHC Rule identifiers, so
+the module can be augmented later (i.e. new leaves added) without
+pushing any of these frequently co-occurring identifiers' deltas
+past the single-byte threshold.
+
+TODO: describe the resulting manual SID allocation mechanism: SIDs
+are first generated automatically, then remapped to a stable,
+manually curated allocation table (module, namespace, identifier) so
+that previously published SIDs do not shift when the module evolves
+(fields added, removed, or deprecated). Reference {{RFC9595}} for
+the SID file format and describe the augmentation used to carry type
+information per SID item.
+
+The delta encoding above optimizes SIDs used as CBOR map keys, but
+does nothing for a SID used as a value, for instance an identityref
+leaf's value, such as a Rule entry's "matching-operator" or
+"comp-decomp-action". {{I-D.toutain-core-private-sid-translation}}
+addresses this with a new Compression/Decompression Action,
+"cda-sid-translation": it replaces such a SID value with a "private
+SID", a small negative number, computed from the real SID, an
+"entry-point", and an offset. It reports a worked IPv6/UDP/CoAP
+compression Rule example where this reduces a 3994-byte file to
+3057 bytes, a 23% reduction.
+
+With this technique, an identity's first 24 possible values (private
+SIDs -1 to -24) each encode on a single byte -- valuable for the
+identityref values used most intensively across a Rule, such as
+"mo-equal", "mo-ignore", "cda-value-sent", and "cda-not-sent". The
+next 232 values (private SIDs -25 to -256) still encode on 2 bytes,
+an improvement over an untranslated SID from the RFC SID range,
+which always takes 3 bytes in the "ietf-schc" data model. Beyond
+that, translation has no effect: the private SID also takes 3 bytes,
+same as the original. {{fig-sid-translation}} summarizes this.
+
+~~~
++------------------+------------+-------------+-----------+
+|   Private SID    | Identities | Private SID | Plain SID |
+|      range       |  covered   |    bytes    |   bytes   |
++------------------+------------+-------------+-----------+
+|    -1 to -24     |     24     |      1      |     3     |
+|   -25 to -256    |    232     |      2      |     3     |
+|   beyond -256    |     --     |      3      |     3     |
++------------------+------------+-------------+-----------+
+~~~
+{: #fig-sid-translation title="Private SID Encoding Size vs. Plain SID (RFC SID Range)"}
+
+Beyond "entry_point + 256", a private SID can instead specify a
+Rule's entry-index; beyond that, the remaining space is shared
+between identity and data values, with no further reserved
+distinction.
 
 ## Full YANG Module
 
