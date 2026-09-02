@@ -126,10 +126,11 @@ used (see {{rule-management}}).
 This document deprecates the whole compression Rule entry structure
 in favor of a new one, providing a uniform way to reference a field
 entry. A new
-"entry-index" leaf is introduced, incremented sequentially for each
-entry, which becomes the key of the new "entry-universal" list; the
-"entry-universal" list is defined as "ordered-by user" so that entry order
-can still convey the header field order (addressing the second
+"entry-index" leaf is introduced as the key of the new
+"entry-universal" list. The list is defined as "ordered-by user", and
+"entry-index" values are assigned sequentially according to the order of
+the entries in that list. The list order therefore continues to convey
+the header field order (addressing the second
 problem).
 
 "entry-index" is then followed by a choice between a field-id and a
@@ -275,12 +276,13 @@ list ({{fig-compression-rule-entry}}): the "space-id"/
 supersedes them there. They remain usable only in the deprecated
 "entry" list, for Rules that already reference them.
 
-No SID {{RFC9595}} has been allocated for RFC 9363 so far. Once SIDs
-are allocated for the module, none from the range registered for
-RFC 9363 MUST be allocated to these twenty deprecated identities: a
-SID "immutably maps to EXACTLY one YANG name", so allocating one to
-an identity already superseded by Universal Options would waste it
-permanently, with no way to reclaim it later.
+IANA has allocated the SID range 2550-2949 to the "ietf-schc"
+module. At the time of writing, no SID file for "ietf-schc" is
+registered in the IETF YANG-SID Modules registry. None from the range 
+registered for RFC 9363 MUST be allocated to these twenty deprecated 
+identities: a SID "immutably maps to EXACTLY one YANG name", so 
+allocating one to an identity already superseded by Universal Options 
+would waste it permanently, with no way to reclaim it later.
 
 The working copy of the module has been corrected accordingly: the
 twenty identities are present, each with "status deprecated;" (see
@@ -347,12 +349,13 @@ new Field Length functions introduced in {{field-length-functions}},
 which can reference such a field, by its "entry-index", to determine
 the length of another field (e.g. the Partial IV).
 
-WARNING: KUDOS's "fid-coap-option-kudos-x-m" cannot be treated the
-same way as OSCORE's "fid-coap-option-oscore-flags-n" for this
-purpose: "x-m" encodes the Nonce's length plus one, not the length
-itself, so "fl-length-bytes" and "fl-length-bits" cannot be used
-for it as defined. If the length of the Nonce is not known at Rule
-creation time, "fl-variable" SHOULD be used instead.
+KUDOS's "fid-coap-option-kudos-x-m" cannot be treated in the same
+way as OSCORE's "fid-coap-option-oscore-flags-n" for this purpose.
+The value "m" encodes the Nonce length in bytes minus one; equivalently,
+the Nonce length is "m + 1". Since "fl-length-bytes" and
+"fl-length-bits" directly use the value of the referenced entry as the
+length, they cannot directly represent this relationship. KUDOS
+therefore requires separate handling of this length transformation.
 
 "fid-coap-option" itself is kept "current": it is still used,
 unchanged, as the base identity of these OSCORE and KUDOS suboption
@@ -803,8 +806,9 @@ The corresponding new identities are:
 
 The SCHC YANG data model provides support for Rule management
 through the "management" feature and the "nature-management" Rule
-nature. A management Rule is itself a compression Rule, but kept
-separate from regular compression Rules: IPv6 addresses and port
+nature. A management Rule uses the compression Rule structure, 
+but is kept separate from regular compression Rules through the
+"nature-management" Rule nature: IPv6 addresses and port
 numbers are specially dedicated to identifying it, and MAY overlap
 with values used by regular compression Rules; the nature of the
 Rule is what allows distinguishing them. Management Rules are
@@ -1841,6 +1845,15 @@ module ietf-schc {
     by its index in bits. ";
   }
 
+  identity fl-any {
+    base fl-base-type;
+    
+    description
+      "Field length is not explicitly carried in the Compression Residue.
+      This function is used for a field that extends to the end of the
+      SCHC packet, such as a trailing payload.";
+}
+
   //---------------------------------
   // Direction Indicator type
   //---------------------------------
@@ -2033,14 +2046,14 @@ module ietf-schc {
   }
 
  identity cda-compress-sent {
-   base schc:mo-base-type;
+   base schc:cda-base-type;
    description
      "Send a compressed version of TV keeping UP and
       DOWN direction.";
  }
 
  identity cda-rev-compress-sent {
-   base schc:mo-base-type;
+   base schc:cda-base-type;
    description
      "Send a compressed version of TV reversing UP and
       DOWN direction.";
@@ -2508,7 +2521,7 @@ module ietf-schc {
       type uint16;
 
       description 
-        "position in the rule";
+        "Sequential position of the entry in the user-ordered Rule list.";
     }
 
     choice field-or-space {
@@ -2570,8 +2583,11 @@ module ietf-schc {
       type uint16;
 
       description 
-      "some function length may take arguments";
-    }
+      "Argument used by Field Length functions. For
+      fl-length-bytes and fl-length-bits, this value is the
+      entry-index of the Rule entry whose numerical field value
+      specifies the length.";    
+      }
     leaf field-position {
       type uint8;
       mandatory true;
@@ -2717,11 +2733,10 @@ module ietf-schc {
   identity nature-management {
     base nature-base-type;
     description
-      "Identify a management Rule. These rules are used to manage
-      the static context and are similar to compression rules.";
-    reference
-      "RFC 8724 SCHC: Generic Framework for Static Context Header
-                Compression and Fragmentation (see Section 6)";
+      "Identify a management Rule. Management Rules use the
+     compression Rule structure to operate on the SCHC Context.";
+  /* Reference to be added when the Rule Management specification
+     is available. */
   }
 
   grouping compression-content {
@@ -3094,16 +3109,16 @@ module ietf-schc {
           uses compression-content-universal;
         }
         description
-          "A Rule is for compression, for no-compression, or for
-           fragmentation.";
+          "A Rule is for compression, no-compression, fragmentation,
+          or management.";
       }
       description
         "Set of compression, no-compression, or fragmentation
          Rules identified by their rule-id.";
     }
     description
-      "A SCHC set of Rules is composed of a list of Rules that are
-       used for compression, no-compression, or fragmentation.";
+      "A SCHC set of Rules is composed of a list of Rules used for
+   compression, no-compression, fragmentation, or management.";
     reference
       "RFC 8724 SCHC: Generic Framework for Static Context Header
                 Compression and Fragmentation";
@@ -3116,7 +3131,7 @@ module ietf-schc {
           container from {
             uses schc:rule-id-type;
             description 
-              "Orign Rule ID";
+              "Source Rule ID";
           }
           container to {
             uses schc:rule-id-type;
