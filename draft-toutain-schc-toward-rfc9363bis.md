@@ -24,11 +24,6 @@ venue:
 
 author:
  -
-    ins: A. Minaburo
-    name: Ana Minaburo
-    org: Consultant
-    email: ana@minaburo.com
- -
     ins: L. Toutain
     name: Laurent Toutain
     org: Institut MINES TELECOM; IMT Atlantique
@@ -37,6 +32,20 @@ author:
     code: 35576
     country: France
     email: Laurent.Toutain@imt-atlantique.fr
+ -
+    ins: A. Minaburo
+    name: Ana Minaburo
+    org: Consultant
+    email: ana@minaburo.com
+ -
+    ins: S. Sirohi
+    name: Samar Sirohi
+    org: Institut MINES TELECOM; IMT Atlantique
+    street: 2 rue de la Chataigneraie CS 17607
+    city: Cesson-Sevigne Cedex
+    code: 35576
+    country: France
+    email: Samar.Sirohi@imt-atlantique.fr
 
 normative:
   RFC2119:
@@ -398,13 +407,13 @@ Partial IV field. This works directly for OSCORE;
 {{oscore-kudos-fids}} explains why the same does not hold for
 KUDOS's Nonce.
 
-This document also introduces "fl-any", for an entry that is always
-the last one in the Rule (see {{icmpv6}}'s "fid-payload"). Unlike
-"fl-variable", which prefixes its residue with an explicit length
-(see {{variable-length-in-bits}}), "fl-any" accepts a field of any
-length but does not add that prefix when serializing the residue:
-being the last entry, its residue already runs to the end of the
-SCHC packet and needs no delimiter.
+This document also introduces "fl-remaining", for an entry that is
+always the last one in the Rule (see {{icmpv6}}'s "fid-payload").
+Unlike "fl-variable", which prefixes its residue with an explicit
+length (see {{variable-length-in-bits}}), "fl-remaining" accepts a
+field of any length but does not add that prefix when serializing
+the residue: being the last entry, its residue already runs to the
+end of the SCHC packet and needs no delimiter.
 
 ## Example 1: OSCORE outer header
 
@@ -568,8 +577,8 @@ be used as-is when compressing other protocols:
   Action to "not-sent" is RECOMMENDED.
 * "fid-payload": MUST be the last entry of the Rule, matching its
   position as the packet's trailing payload, and uses the new
-  "fl-any" ({{field-length-functions}}), which accepts any length
-  without prefixing the residue with one, since the last entry's
+  "fl-remaining" ({{field-length-functions}}), which accepts any
+  length without prefixing the residue with one, since the last entry's
   residue already runs to the end of the SCHC packet. With Matching
   Operator "ignore" and Compression/Decompression Action
   "value-sent", it behaves exactly as the usual, implicit SCHC
@@ -701,68 +710,68 @@ that flow's identification. It is RECOMMENDED to be able to fully
 reconstruct the Layer 4 header this way, not just the ports.
 
 ~~~
-+--------------+-----+----+----+--------+--------+----------+
-| Field        | FL  | FP | DI | TV     | MO     | CDA      |
-+--------------+-----+----+----+--------+--------+----------+
-+-------------------- Outer IPv6 header --------------------+
-| ipv6-version | 4   | 1  | Bi | 6      | equal  | not-sent |
-| ipv6-        | 8   | 1  | Bi | 0      | ignore | not-sent |
-| trafficclass |     |    |    |        |        |          |
-| ipv6-        | 20  | 1  | Bi | 0      | ignore | not-sent |
-| flowlabel    |     |    |    |        |        |          |
-| ipv6-        | 16  | 1  | Bi | -      | ignore | compute  |
-| payload-     |     |    |    |        |        |          |
-| length       |     |    |    |        |        |          |
-| ipv6-        | 8   | 1  | Bi | 58     | equal  | not-sent |
-| nextheader   |     |    |    |        |        |          |
-| ipv6-        | 8   | 1  | Up | -      | ignore | value-   |
-| hoplimit     |     |    |    |        |        | sent     |
-| ipv6-        | 8   | 1  | Dw | 1      | equal  | not-sent |
-| hoplimit     |     |    |    |        |        |          |
-| ipv6-        | 64  | 1  | Bi | aaaa:: | equal  | not-sent |
-| devprefix    |     |    |    |        |        |          |
-| ipv6-deviid  | 64  | 1  | Bi | ::zzzz | equal  | not-sent |
-| ipv6-        | 64  | 1  | Bi | -      | ignore | value-   |
-| appprefix    |     |    |    |        |        | sent     |
-| ipv6-appiid  | 64  | 1  | Bi | -      | ignore | value-   |
-|              |     |    |    |        |        | sent     |
-+---------------------- ICMPv6 header ----------------------+
-| icmpv6-type  | 8   | 1  | Bi | 1      | equal  | not-sent |
-| icmpv6-code  | 8   | 1  | Bi | 4      | equal  | not-sent |
-| icmpv6-      | 16  | 1  | Bi | 0      | ignore | compute  |
-| checksum     |     |    |    |        |        |          |
-| unused       | 32  | 1  | Bi | 0      | ignore | not-sent |
-+------------- Invoking (embedded) IPv6 header -------------+
-| ipv6-version | 4   | 2  | Bi | 6      | equal  | not-sent |
-| ipv6-        | 8   | 2  | Bi | 0      | ignore | not-sent |
-| trafficclass |     |    |    |        |        |          |
-| ipv6-        | 20  | 2  | Bi | 0      | ignore | not-sent |
-| flowlabel    |     |    |    |        |        |          |
-| ipv6-        | 16  | 2  | Bi | -      | ignore | compute  |
-| payload-     |     |    |    |        |        |          |
-| length       |     |    |    |        |        |          |
-| ipv6-        | 8   | 2  | Bi | 17     | equal  | not-sent |
-| nextheader   |     |    |    |        |        |          |
-| ipv6-        | 8   | 2  | Dw | 1      | equal  | not-sent |
-| hoplimit     |     |    |    |        |        |          |
-| ipv6-        | 8   | 2  | Up | -      | ignore | value-   |
-| hoplimit     |     |    |    |        |        | sent     |
-| ipv6-        | 64  | 2  | Bi | aaaa:: | equal  | not-sent |
-| devprefix    |     |    |    |        |        |          |
-| ipv6-deviid  | 64  | 2  | Bi | ::zzzz | equal  | not-sent |
-| ipv6-        | 64  | 2  | Bi | -      | ignore | value-   |
-| appprefix    |     |    |    |        |        | sent     |
-| ipv6-appiid  | 64  | 2  | Bi | -      | ignore | value-   |
-|              |     |    |    |        |        | sent     |
-+------------- Invoking (embedded) UDP header --------------+
-| udp-dev-port | 16  | 1  | Bi | 5683   | equal  | not-sent |
-| udp-app-port | 16  | 1  | Bi | -      | ignore | value-   |
-|              |     |    |    |        |        | sent     |
-| udp-length   | 16  | 1  | Bi | 0      | ignore | compute  |
-| udp-checksum | 16  | 1  | Bi | 0      | ignore | compute  |
-+--------------+-----+----+----+--------+--------+----------+
-| payload      | any | 1  | Bi | -      | ignore | not-sent |
-+--------------+-----+----+----+--------+--------+----------+
++--------------+-----------+----+----+--------+--------+----------+
+| Field        | FL        | FP | DI | TV     | MO     | CDA      |
++--------------+-----------+----+----+--------+--------+----------+
++----------------------- Outer IPv6 header -----------------------+
+| ipv6-version | 4         | 1  | Bi | 6      | equal  | not-sent |
+| ipv6-        | 8         | 1  | Bi | 0      | ignore | not-sent |
+| trafficclass |           |    |    |        |        |          |
+| ipv6-        | 20        | 1  | Bi | 0      | ignore | not-sent |
+| flowlabel    |           |    |    |        |        |          |
+| ipv6-        | 16        | 1  | Bi | -      | ignore | compute  |
+| payload-     |           |    |    |        |        |          |
+| length       |           |    |    |        |        |          |
+| ipv6-        | 8         | 1  | Bi | 58     | equal  | not-sent |
+| nextheader   |           |    |    |        |        |          |
+| ipv6-        | 8         | 1  | Up | -      | ignore | value-   |
+| hoplimit     |           |    |    |        |        | sent     |
+| ipv6-        | 8         | 1  | Dw | 1      | equal  | not-sent |
+| hoplimit     |           |    |    |        |        |          |
+| ipv6-        | 64        | 1  | Bi | aaaa:: | equal  | not-sent |
+| devprefix    |           |    |    |        |        |          |
+| ipv6-deviid  | 64        | 1  | Bi | ::zzzz | equal  | not-sent |
+| ipv6-        | 64        | 1  | Bi | -      | ignore | value-   |
+| appprefix    |           |    |    |        |        | sent     |
+| ipv6-appiid  | 64        | 1  | Bi | -      | ignore | value-   |
+|              |           |    |    |        |        | sent     |
++------------------------- ICMPv6 header -------------------------+
+| icmpv6-type  | 8         | 1  | Bi | 1      | equal  | not-sent |
+| icmpv6-code  | 8         | 1  | Bi | 4      | equal  | not-sent |
+| icmpv6-      | 16        | 1  | Bi | 0      | ignore | compute  |
+| checksum     |           |    |    |        |        |          |
+| unused       | 32        | 1  | Bi | 0      | ignore | not-sent |
++---------------- Invoking (embedded) IPv6 header ----------------+
+| ipv6-version | 4         | 2  | Bi | 6      | equal  | not-sent |
+| ipv6-        | 8         | 2  | Bi | 0      | ignore | not-sent |
+| trafficclass |           |    |    |        |        |          |
+| ipv6-        | 20        | 2  | Bi | 0      | ignore | not-sent |
+| flowlabel    |           |    |    |        |        |          |
+| ipv6-        | 16        | 2  | Bi | -      | ignore | compute  |
+| payload-     |           |    |    |        |        |          |
+| length       |           |    |    |        |        |          |
+| ipv6-        | 8         | 2  | Bi | 17     | equal  | not-sent |
+| nextheader   |           |    |    |        |        |          |
+| ipv6-        | 8         | 2  | Dw | 1      | equal  | not-sent |
+| hoplimit     |           |    |    |        |        |          |
+| ipv6-        | 8         | 2  | Up | -      | ignore | value-   |
+| hoplimit     |           |    |    |        |        | sent     |
+| ipv6-        | 64        | 2  | Bi | aaaa:: | equal  | not-sent |
+| devprefix    |           |    |    |        |        |          |
+| ipv6-deviid  | 64        | 2  | Bi | ::zzzz | equal  | not-sent |
+| ipv6-        | 64        | 2  | Bi | -      | ignore | value-   |
+| appprefix    |           |    |    |        |        | sent     |
+| ipv6-appiid  | 64        | 2  | Bi | -      | ignore | value-   |
+|              |           |    |    |        |        | sent     |
++---------------- Invoking (embedded) UDP header -----------------+
+| udp-dev-port | 16        | 1  | Bi | 5683   | equal  | not-sent |
+| udp-app-port | 16        | 1  | Bi | -      | ignore | value-   |
+|              |           |    |    |        |        | sent     |
+| udp-length   | 16        | 1  | Bi | 0      | ignore | compute  |
+| udp-checksum | 16        | 1  | Bi | 0      | ignore | compute  |
++--------------+-----------+----+----+--------+--------+----------+
+| payload      | remaining | 1  | Bi | -      | ignore | not-sent |
++--------------+-----------+----+----+--------+--------+----------+
 ~~~
 {: #fig-alt-icmpv6 title="Alternative ICMPv6 Rule Embedding the Invoking IPv6/UDP Header In Place"}
 
@@ -1845,7 +1854,7 @@ module ietf-schc {
     by its index in bits. ";
   }
 
-  identity fl-any {
+  identity fl-remaining {
     base fl-base-type;
     
     description
