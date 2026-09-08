@@ -2,6 +2,7 @@
 title: "Toward RFC 9363bis: Changes to the SCHC YANG Data Model"
 abbrev: "Toward SCHC YANG Model bis"
 category: std
+ipr: trust200902
 docname: draft-toutain-schc-toward-rfc9363bis-00
 submissiontype: IETF
 number:
@@ -32,6 +33,15 @@ author:
     code: 35576
     country: France
     email: Laurent.Toutain@imt-atlantique.fr
+ -
+        ins: M. Tiloca
+        name: Marco Tiloca
+        org: RISE AB
+        street: Isafjordsgatan 22
+        city: Kista
+        code: SE-16440
+        country: Sweden
+        email: marco.tiloca@ri.se
  -
     ins: A. Minaburo
     name: Ana Minaburo
@@ -105,6 +115,10 @@ to formally incorporate it.
 
 This document also introduces the framework for Rule management; the
 details of Rule management are left to separate documents.
+
+# Conventions and Definitions
+
+{::boilerplate bcp14-tagged}
 
 # Universal Options {#universal-options}
 
@@ -255,7 +269,7 @@ typedef space-id-type {
 
 "space-id-type" is used, together with "space-id-base-type" and
 "fid-base-type"'s common ancestor "space-field-id-base-type", by the
-"field-or-space" choice (see {{compression-rule-entry}}).
+"field-or-space" choice (see {{fig-compression-rule-entry}}).
 
 ## Deprecating the Per-Option CoAP FIDs
 
@@ -382,16 +396,15 @@ Token Length (TKL) is used to indicate the length of the field.
 {{I-D.ietf-schc-8824-update}} extends this to the Partial IV field
 for OSCORE.
 
-This approach is not scalable: a new function would have to be
-defined for every new protocol field whose length needs to be
-carried this way. This document instead introduces two new
-functions, "fl-length-bytes" and "fl-length-bits". They both take an
-argument, carried in the new Rule entry field "field-length-value",
-that points to the entry where the length is specified, referenced
-by its "entry-index" (see {{compression-rule-entry}}). Having two
-separate functions, rather than a single generic one, also conveys
-the unit of the length value: bytes for "fl-length-bytes", bits for
-"fl-length-bits".
+This approach is not scalable: a new function would have to be defined
+for every new protocol field whose length needs to be carried this way.
+This document instead introduces two new functions, "fl-length-bytes"
+and "fl-length-bits". They both take an argument, carried in the new
+Rule entry field "field-length-value", that points to the entry where
+the length is specified, referenced by its "entry-index" (see
+{{fig-compression-rule-entry}}). Having two separate functions, rather
+than a single generic one, also conveys the unit of the length value:
+bytes for "fl-length-bytes", bits for "fl-length-bits".
 
 * "fl-length-bytes" generalizes "fl-token-length": for example,
   "fl-token-length" is now equivalent to "fl-length-bytes(index)",
@@ -593,9 +606,8 @@ be used as-is when compressing other protocols:
 {{I-D.ietf-schc-icmpv6-compression}} is also the origin of the
 "mo-rule-match"/"mo-rev-rule-match" Matching Operators and the
 "cda-compress-sent"/"cda-rev-compress-sent" Compression/
-Decompression Actions, already listed in
-{{changes-from-rfc-9363}}. "mo-rule-match" returns true if the
-Target Value matches another Rule, keeping the Up/Down direction;
+Decompression Actions. "mo-rule-match" returns true if the Target
+Value matches another Rule, keeping the Up/Down direction;
 "mo-rev-rule-match" does the same but reversing that direction;
 "cda-compress-sent" and "cda-rev-compress-sent" send a compressed
 version of the Target Value, using respectively the matched Rule or
@@ -3204,6 +3216,11 @@ with IANA, referencing this document instead of RFC 9363.
 
 This document reuses text and structure from RFC 9363. The authors
 thank the contributors and reviewers of that document.
+
+This work was supported by the Sweden's Innovation Agency VINNOVA 
+within the EUREKA CELTIC-NEXT project CYPRESS.
+
+This work has been supported by the SCHC Chair from IMT Atlantique and Afnic.
 
 The authors also thank Claude (Anthropic) for rewriting parts of
 this document in more correct English and for checking its
