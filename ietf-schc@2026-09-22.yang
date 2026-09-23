@@ -1770,6 +1770,49 @@ module ietf-schc {
      is available. */
   }
 
+  identity action-base-type {
+    description
+      "Action applied to a packet matching a compression Rule, once
+       compression has been performed (or before decompression is
+       performed in the other direction). The default behavior of
+       RFC 8724 is to hand the SCHC Packet over to the lower layer;
+       other actions allow an intermediate entity, typically the
+       SCHC gateway, to process the packet locally instead.";
+    reference
+      "draft-barthel-lpwan-oam-schc-05 OAM for LPWAN using Static
+                Context Header Compression (SCHC) (see Section 5)";
+  }
+
+  identity action-forward {
+    base action-base-type;
+    description
+      "The packet is handed over to the lower layer. This is the
+       default behavior specified in RFC 8724.";
+    reference
+      "RFC 8724 SCHC: Generic Framework for Static Context Header
+                Compression and Fragmentation";
+  }
+
+  identity action-proxy-ping {
+    base action-base-type;
+    description
+      "The packet is not handed over to the lower layer but
+       processed locally by a ping proxy, which answers the ICMPv6
+       Echo Request on behalf of the Device.";
+    reference
+      "draft-barthel-lpwan-oam-schc-05 OAM for LPWAN using Static
+                Context Header Compression (SCHC) (see Section 5)";
+  }
+
+  typedef action-type {
+    type identityref {
+      base action-base-type;
+    }
+    description
+      "Defines the type to indicate the action associated with a
+       compression Rule.";
+  }
+
   grouping compression-content {
     status deprecated;
     list entry {
@@ -1816,6 +1859,25 @@ module ietf-schc {
         "A compression Rule is a list of Rule entries, each
          describing a header field or Universal Option. An entry
          is identified by its entry-index.";
+    }
+
+    leaf action {
+      type action-type;
+      default "schc:action-forward";
+      description
+        "Action to be applied to a packet matching this Rule, after
+         compression or before decompression. When absent, the
+         packet is sent to the lower layer as specified in
+         RFC 8724.";
+    }
+
+    list action-value {
+      key "index";
+      uses tv-struct;
+      description
+        "Parameters associated with the action, based on a TV
+         structure, in order to allow for several arguments.
+         'action-forward' requires no argument.";
     }
 
     description
