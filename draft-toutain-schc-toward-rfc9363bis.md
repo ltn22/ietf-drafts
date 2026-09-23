@@ -2,6 +2,7 @@
 title: "Toward RFC 9363bis: Changes to the SCHC YANG Data Model"
 abbrev: "Toward SCHC YANG Model bis"
 category: std
+intendedstatus: Informational
 ipr: trust200902
 docname: draft-toutain-schc-toward-rfc9363bis-00
 submissiontype: IETF
@@ -10,7 +11,7 @@ date:
 consensus: true
 v: 3
 area: "Internet"
-workgroup: "Independent Submission"
+workgroup: "SCHC"
 keyword:
  - SCHC
  - YANG
@@ -365,8 +366,8 @@ sub-fields, each with its own identity ("fid-coap-option-oscore-piv",
 
 Note that the Flags field, for both OSCORE and KUDOS, is also split
 so that its length indicator becomes a specific field of its own:
-"fid-coap-option-oscore-flags-flags"/"fid-coap-option-oscore-flags-n"
-for OSCORE, and "fid-coap-option-kudos-x-flags"/
+"fid-coap-option-oscore-flags-flagbits"/"fid-coap-option-oscore-flags-n"
+for OSCORE, and "fid-coap-option-kudos-x-flagbits"/
 "fid-coap-option-kudos-x-m" for KUDOS. This will be exploited by the
 new Field Length functions introduced in {{field-length-functions}},
 which can reference such a field, by its "entry-index", to determine
@@ -393,7 +394,7 @@ an arbitrary CoAP option, and are therefore unaffected: they remain
 RFC 8824 {{RFC8824}} defines a specific length function for the
 Token field: when this function is specified, the value of the
 Token Length (TKL) is used to indicate the length of the field.
-{{I-D.ietf-schc-8824-update}} extends this to the Partial IV field
+{{I-D.ietf-schc-8824-update}} extends this principle to the Partial IV field
 for OSCORE.
 
 This approach is not scalable: a new function would have to be defined
@@ -426,7 +427,7 @@ Unlike "fl-variable", which prefixes its residue with an explicit
 length (see {{variable-length-in-bits}}), "fl-remaining" accepts a
 field of any length but does not add that prefix when serializing
 the residue: being the last entry, its residue already runs to the
-end of the SCHC packet and needs no delimiter.
+end of the compression residue and needs no delimiter.
 
 ## Example 1: OSCORE outer header
 
@@ -462,7 +463,7 @@ the ones defined in the YANG module, without their prefix ("fid-",
 |    |                | bytes(2) |    |    |    |        | sent     |
 | 7  | coap-option-   | 5        | 1  | Up | 01 | equal  | not-sent |
 |    | oscore-flags-  |          |    |    |    |        |          |
-|    | flags          |          |    |    |    |        |          |
+|    | flagbits       |          |    |    |    |        |          |
 | 8  | coap-option-   | 3        | 1  | Up | 01 | equal  | not-sent |
 |    | oscore-flags-n |          |    |    |    |        |          |
 | 9  | coap-option-   | length-  | 1  | Up | -  | ignore | value-   |
@@ -485,7 +486,7 @@ This rule uses the new capabilities introduced above:
 
 * The OSCORE option's content is split into sub-fields. Note that
   the Flags field is itself split between "coap-option-oscore-flags-
-  flags" and "coap-option-oscore-flags-n", the latter carrying the
+  flagbits" and "coap-option-oscore-flags-n", the latter carrying the
   length of the Partial IV field.
 
 * The Partial IV length is likewise given by "fl-length-bytes", this
@@ -887,7 +888,7 @@ list rule {
   }
 }
 ~~~
-{: #fig-management-in-compression-universal title="Widening compression-universal to Also Serve Management Rules (module revision 2026-08-29)"}
+{: #fig-management-in-compression-universal title="Widening compression-universal to Also Serve Management Rules (module revision 2026-09-22)"}
 
 For management, a management context is added: its values are
 common to all SCHC Rules in that management instance, rather than
@@ -978,16 +979,28 @@ Rule's entry-index; beyond that, the remaining space is shared
 between identity and data values, with no further reserved
 distinction.
 
-## Full YANG Module
+# Security Considerations
+
+TODO Security
+
+# IANA Considerations
+
+TODO: register the (possibly updated) YANG module and namespace URI
+with IANA, referencing this document instead of RFC 9363.
+
+--- back
+
+# Full YANG Module
 
 {{fig-full-module}} shows the working copy of the "ietf-schc"
 module, kept up to date with every change discussed in this
 document, taken from the project's working file
-("ietf-schc@2026-08-29.yang"), validated with "pyang" (no
+("ietf-schc@2026-09-22.yang"), validated with "pyang" (no
 errors; see the pre-existing RFC 8407 style findings noted in its
 own revision history for remaining gaps).
 
 ~~~ yang
+<CODE BEGINS> file "ietf-schc@2026-09-22.yang"
 module ietf-schc {
   yang-version 1.1;
   namespace "urn:ietf:params:xml:ns:yang:ietf-schc";
@@ -1046,7 +1059,7 @@ module ietf-schc {
      operations in fields.
      This data model applies to both compression and fragmentation.";
 
-  revision 2026-08-29 {
+  revision 2026-09-22 {
     description
       "Wire the 'nature-management' Rule nature into the data
        model: widen 'compression-content-universal''s
@@ -1645,7 +1658,7 @@ module ietf-schc {
                 Section 6.4)";
   }
 
-   identity fid-coap-option-oscore-flags-flags {
+   identity fid-coap-option-oscore-flags-flagbits {
     base fid-coap-option-oscore-flags;
     description
       "First 5 bits of the OSCORE flags field forming flags subfield.";
@@ -1706,7 +1719,7 @@ module ietf-schc {
       "draft-ietf-core-oscore-key-update";
   }
 
-  identity fid-coap-option-kudos-x-flags {
+  identity fid-coap-option-kudos-x-flagbits {
     base fid-coap-option-kudos-x;
     description
       "4 first bits of the x field in the kudos option defined in 
@@ -3197,19 +3210,9 @@ module ietf-schc {
           with a iPatch, where the CORECONF payload contained in 'ipatch-sequence'.";
       }
 }
+<CODE ENDS>
 ~~~
 {: #fig-full-module title="Working Copy of the ietf-schc YANG Module"}
-
-# Security Considerations
-
-TODO Security
-
-# IANA Considerations
-
-TODO: register the (possibly updated) YANG module and namespace URI
-with IANA, referencing this document instead of RFC 9363.
-
---- back
 
 # Acknowledgments
 {:numbered="false"}
