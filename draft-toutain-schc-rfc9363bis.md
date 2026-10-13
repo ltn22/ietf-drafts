@@ -1,16 +1,17 @@
 ---
-title: "Toward RFC 9363bis: Changes to the SCHC YANG Data Model"
-abbrev: "Toward SCHC YANG Model bis"
+title: "RFC 9363bis: Changes to the SCHC YANG Data Model"
+abbrev: "SCHC YANG Model bis"
 category: std
+intendedstatus: Informational
 ipr: trust200902
-docname: draft-toutain-schc-toward-rfc9363bis-00
+docname: draft-toutain-schc-rfc9363bis-00
 submissiontype: IETF
 number:
 date:
 consensus: true
 v: 3
 area: "Internet"
-workgroup: "Independent Submission"
+workgroup: "SCHC"
 keyword:
  - SCHC
  - YANG
@@ -58,8 +59,6 @@ author:
     email: Samar.Sirohi@imt-atlantique.fr
 
 normative:
-  RFC2119:
-  RFC8174:
   RFC7950:
   RFC9595:
 
@@ -81,6 +80,7 @@ informative:
   I-D.ietf-core-oscore-key-update:
   I-D.toutain-schc-sid-allocation:
   I-D.toutain-core-private-sid-translation:
+  I-D.barthel-lpwan-oam-schc:
 
 --- abstract
 
@@ -164,7 +164,7 @@ entry-index argument discussed later.
 RFC 7950 {{RFC7950}}, Section 11, does not allow the "entry" list's
 key, nor the "field-id" leaf, to be changed in place in a published
 module ("Otherwise, if the semantics of any previous definition are
-changed [...] then this MUST be achieved by a new definition with a
+changed \[...\] then this MUST be achieved by a new definition with a
 new identifier"). This document therefore leaves the RFC 9363
 "compression-rule-entry" grouping, its "compression-content"
 grouping, and the "compression" case untouched, and marks them
@@ -178,7 +178,7 @@ used by a new "compression-content-universal" grouping and a new
 {{fig-compression-rule-entry}} shows the resulting YANG tree diagram
 for both cases (deprecated "compression" and new "compression-universal").
 
-~~~
+~~~ ascii-art
 x--:(compression) {compression}?
 |  x--rw entry* [field-id field-position direction-indicator]
 |     +--rw field-id                    fid-type
@@ -186,28 +186,44 @@ x--:(compression) {compression}?
 |     +--rw field-position              uint8
 |     +--rw direction-indicator         di-type
 |     +--rw target-value* [index]
+|     |  +--rw index    uint16
+|     |  +--rw value?   binary
 |     +--rw matching-operator           mo-type
 |     +--rw matching-operator-value* [index]
+|     |  +--rw index    uint16
+|     |  +--rw value?   binary
 |     +--rw comp-decomp-action          cda-type
 |     +--rw comp-decomp-action-value* [index]
+|        +--rw index    uint16
+|        +--rw value?   binary
 +--:(compression-universal) {compression or management}?
    +--rw entry-universal* [entry-index]
-      +--rw entry-index                 uint16
-      +--rw (field-or-space)
-      |  +--:(regular-field)
-      |  |  +--rw field-id?             fid-type
-      |  +--:(universal-option)
-      |     +--rw space-id?             space-id-type
-      |     +--rw universal-value?      uint64
-      +--rw field-length                union
-      +--rw field-length-value?         uint16
-      +--rw field-position              uint8
-      +--rw direction-indicator         di-type
-      +--rw target-value* [index]
-      +--rw matching-operator           mo-type
-      +--rw matching-operator-value* [index]
-      +--rw comp-decomp-action          cda-type
-      +--rw comp-decomp-action-value* [index]
+   |  +--rw entry-index                 uint16
+   |  +--rw (field-or-space)
+   |  |  +--:(regular-field)
+   |  |  |  +--rw field-id              fid-type
+   |  |  +--:(universal-option)
+   |  |     +--rw space-id              space-id-type
+   |  |     +--rw universal-value       uint64
+   |  +--rw field-length                union
+   |  +--rw field-length-value?         uint16
+   |  +--rw field-position              uint8
+   |  +--rw direction-indicator         di-type
+   |  +--rw target-value* [index]
+   |  |  +--rw index    uint16
+   |  |  +--rw value?   binary
+   |  +--rw matching-operator           mo-type
+   |  +--rw matching-operator-value* [index]
+   |  |  +--rw index    uint16
+   |  |  +--rw value?   binary
+   |  +--rw comp-decomp-action          cda-type
+   |  +--rw comp-decomp-action-value* [index]
+   |     +--rw index    uint16
+   |     +--rw value?   binary
+   +--rw action?                          action-type
+   +--rw action-value* [index]
+      +--rw index    uint16
+      +--rw value?   binary
 ~~~
 {: #fig-compression-rule-entry title="Compression Rule Entry: deprecated (RFC 9363) and new (-universal) cases"}
 
@@ -365,8 +381,8 @@ sub-fields, each with its own identity ("fid-coap-option-oscore-piv",
 
 Note that the Flags field, for both OSCORE and KUDOS, is also split
 so that its length indicator becomes a specific field of its own:
-"fid-coap-option-oscore-flags-flags"/"fid-coap-option-oscore-flags-n"
-for OSCORE, and "fid-coap-option-kudos-x-flags"/
+"fid-coap-option-oscore-flags-flagbits"/"fid-coap-option-oscore-flags-n"
+for OSCORE, and "fid-coap-option-kudos-x-flagbits"/
 "fid-coap-option-kudos-x-m" for KUDOS. This will be exploited by the
 new Field Length functions introduced in {{field-length-functions}},
 which can reference such a field, by its "entry-index", to determine
@@ -393,7 +409,7 @@ an arbitrary CoAP option, and are therefore unaffected: they remain
 RFC 8824 {{RFC8824}} defines a specific length function for the
 Token field: when this function is specified, the value of the
 Token Length (TKL) is used to indicate the length of the field.
-{{I-D.ietf-schc-8824-update}} extends this to the Partial IV field
+{{I-D.ietf-schc-8824-update}} extends this principle to the Partial IV field
 for OSCORE.
 
 This approach is not scalable: a new function would have to be defined
@@ -426,7 +442,7 @@ Unlike "fl-variable", which prefixes its residue with an explicit
 length (see {{variable-length-in-bits}}), "fl-remaining" accepts a
 field of any length but does not add that prefix when serializing
 the residue: being the last entry, its residue already runs to the
-end of the SCHC packet and needs no delimiter.
+end of the compression residue and needs no delimiter.
 
 ## Example 1: OSCORE outer header
 
@@ -445,7 +461,7 @@ numbers the entries in the rule. The names in the other columns are
 the ones defined in the YANG module, without their prefix ("fid-",
 "fl-", "mo-", "cda-"), for better legibility.
 
-~~~
+~~~ aasvg
 +----+----------------+----------+----+----+----+--------+----------+
 | #  | Field          | FL       | FP | DI | TV | MO     | CDA      |
 +----+----------------+----------+----+----+----+--------+----------+
@@ -462,7 +478,7 @@ the ones defined in the YANG module, without their prefix ("fid-",
 |    |                | bytes(2) |    |    |    |        | sent     |
 | 7  | coap-option-   | 5        | 1  | Up | 01 | equal  | not-sent |
 |    | oscore-flags-  |          |    |    |    |        |          |
-|    | flags          |          |    |    |    |        |          |
+|    | flagbits       |          |    |    |    |        |          |
 | 8  | coap-option-   | 3        | 1  | Up | 01 | equal  | not-sent |
 |    | oscore-flags-n |          |    |    |    |        |          |
 | 9  | coap-option-   | length-  | 1  | Up | -  | ignore | value-   |
@@ -485,7 +501,7 @@ This rule uses the new capabilities introduced above:
 
 * The OSCORE option's content is split into sub-fields. Note that
   the Flags field is itself split between "coap-option-oscore-flags-
-  flags" and "coap-option-oscore-flags-n", the latter carrying the
+  flagbits" and "coap-option-oscore-flags-n", the latter carrying the
   length of the Partial IV field.
 
 * The Partial IV length is likewise given by "fl-length-bytes", this
@@ -544,7 +560,7 @@ document's "fl-variable-bits") carries that 4-bit length in its
 residue length prefix; RFC 8824's byte-counted "fl-variable" could
 not.
 
-~~~
+~~~ aasvg
 +----------------+-----------+----+----+----------+---------+-----+
 | Field          | FL        | FP | DI | TV       | MO      | CDA |
 +----------------+-----------+----+----+----------+---------+-----+
@@ -633,7 +649,7 @@ matched and compressed against its own (Up) Rule with
 "rev-rule-match" and "rev-compress-sent", instead of being sent in
 full.
 
-~~~
+~~~ aasvg
 +--------------+-----------+----+----+--------+----------+-----------+
 | Field        | FL        | FP | DI | TV     | MO       | CDA       |
 +--------------+-----------+----+----+--------+----------+-----------+
@@ -690,7 +706,7 @@ together, it is typically well above the 14-byte escape threshold
 ({{variable-length-in-bits}}), so counting it in bytes keeps that
 length prefix itself compact.
 
-~~~
+~~~ aasvg
                              |----------------Length-----------------|
 +---------+---------+--------+---------+---------+---------+---------+
 | RuleID  | IPv6/   | Length | RuleID  | IPv6/   | Payload | Padding |
@@ -721,7 +737,7 @@ failed to reach its destination, and the port numbers are part of
 that flow's identification. It is RECOMMENDED to be able to fully
 reconstruct the Layer 4 header this way, not just the ports.
 
-~~~
+~~~ aasvg
 +--------------+-----------+----+----+--------+--------+----------+
 | Field        | FL        | FP | DI | TV     | MO     | CDA      |
 +--------------+-----------+----+----+--------+--------+----------+
@@ -792,12 +808,82 @@ The compression result should be better, since there is no need to
 send a variable-length residue and a second RuleID, at the cost of
 a more complex Rule definition.
 
-~~~
+~~~ aasvg
 +----------+------------------------------------------+
 |  RuleID  |       IPv6/ICMPv6/IPv6/UDP residue       |
 +----------+------------------------------------------+
 ~~~
 {: #fig-alt-icmpv6-residue title="Residue Layout for the Alternative ICMPv6 Rule"}
+
+# Action {#action}
+
+Selecting a compression Rule triggers compression and sends the
+resulting SCHC Packet to the other end.
+{{I-D.barthel-lpwan-oam-schc}} introduced an Action to change that
+behavior: the Rule is still selected through its entries, but the
+packet description is handed over to the process the Action names,
+instead of being sent to the lower layer. Since the Rule is then
+used only for the selection, the Compression/Decompression Actions
+of its entries do not matter and are set to "not-sent".
+
+The motivating example is an ICMPv6 {{RFC4443}} Echo Request sent to
+a Device. The Device receives the compressed message and answers
+with an Echo Reply, but propagating the Echo Request over the LPWAN
+costs two messages on a constrained link, and the Identifier and
+Sequence Number fields compress poorly when the sender is unaware of
+the compression scheme. The Action "action-proxy-ping" avoids that
+traffic: the core SCHC C/D answers the Echo Request on behalf of the
+Device.
+
+The Action takes a parameter, in seconds, giving the interval during
+which the Device is considered active. During this interval, the
+proxy echoes the ping requests; after it, they are discarded. The
+parameter is carried in "action-value", a list reusing the Target
+Value structure, so an Action may take several arguments.
+
+{{fig-action-rule}} shows a compression Rule for pinging a Device,
+with the entry-index column and the identity short names used in
+{{fig-example-rule}}. The Action applies to the Rule as a whole, and
+is therefore shown above its entries.
+
+~~~ aasvg
++--------------------------+
+| Action: proxy-ping(300)  |
++----+----------------+----+----+----+----+---------+----------+
+| #  | Field          | FL | FP | DI | TV | MO      | CDA      |
++----+----------------+----+----+----+----+---------+----------+
+| IPv6 Headers description (omitted)                           |
++----+----------------+----+----+----+----+---------+----------+
+| 10 | icmpv6-type    | 8  | 1  | Dw | 80 | equal   | not-sent |
+| 11 | icmpv6-code    | 8  | 1  | Bi | 00 | equal   | not-sent |
+| 12 | icmpv6-        | 16 | 1  | Bi | -  | ignore  | not-sent |
+|    | identifier     |    |    |    |    |         |          |
+| 13 | icmpv6-        | 16 | 1  | Bi | 00 | MSB(24) | lsb      |
+|    | sequence       |    |    |    |    |         |          |
++----+----------------+----+----+----+----+---------+----------+
+~~~
+{: #fig-action-rule title="Example Compression Rule for a Ping to a Device"}
+
+In the data model, the Action is added to the compression Rule
+itself, as a sibling of its entries, and not to a single entry:
+
+* "action": an identityref to "action-type", defaulting to
+  "action-forward". Being optional and defaulted, a Rule that does
+  not carry it behaves exactly as in RFC 8724 {{RFC8724}}.
+* "action-value": the Action's arguments, a list based on the Target
+  Value structure, as for Matching Operator and
+  Compression/Decompression Action arguments.
+
+The corresponding new identities are:
+
+* "action-base-type": base identity for the Action applied to a
+  packet matching a compression Rule.
+* "action-forward": the default, where the packet is handed over to
+  the lower layer, as specified in RFC 8724 {{RFC8724}}.
+* "action-proxy-ping": the packet is processed locally by a ping
+  proxy, which answers the Echo Request on behalf of the Device.
+
+
 
 # Compound ACK {#compound-ack}
 
@@ -860,6 +946,7 @@ grouping compression-content-universal {
     }
     /* ... unchanged: key, ordered-by, uses, description ... */
   }
+  /* ... action, action-value (Action section) ... */
 }
 
 container context {
@@ -887,7 +974,7 @@ list rule {
   }
 }
 ~~~
-{: #fig-management-in-compression-universal title="Widening compression-universal to Also Serve Management Rules (module revision 2026-08-29)"}
+{: #fig-management-in-compression-universal title="Widening compression-universal to Also Serve Management Rules (module revision 2026-09-22)"}
 
 For management, a management context is added: its values are
 common to all SCHC Rules in that management instance, rather than
@@ -961,7 +1048,7 @@ which always takes 3 bytes in the "ietf-schc" data model. Beyond
 that, translation has no effect: the private SID also takes 3 bytes,
 same as the original. {{fig-sid-translation}} summarizes this.
 
-~~~
+~~~ aasvg
 +------------------+------------+-------------+-----------+
 |   Private SID    | Identities | Private SID | Plain SID |
 |      range       |  covered   |    bytes    |   bytes   |
@@ -978,16 +1065,28 @@ Rule's entry-index; beyond that, the remaining space is shared
 between identity and data values, with no further reserved
 distinction.
 
-## Full YANG Module
+# Security Considerations
+
+TODO Security
+
+# IANA Considerations
+
+TODO: register the (possibly updated) YANG module and namespace URI
+with IANA, referencing this document instead of RFC 9363.
+
+--- back
+
+# Full YANG Module
 
 {{fig-full-module}} shows the working copy of the "ietf-schc"
 module, kept up to date with every change discussed in this
 document, taken from the project's working file
-("ietf-schc@2026-08-29.yang"), validated with "pyang" (no
+("ietf-schc@2026-09-22.yang"), validated with "pyang" (no
 errors; see the pre-existing RFC 8407 style findings noted in its
 own revision history for remaining gaps).
 
 ~~~ yang
+<CODE BEGINS> file "ietf-schc@2026-09-22.yang"
 module ietf-schc {
   yang-version 1.1;
   namespace "urn:ietf:params:xml:ns:yang:ietf-schc";
@@ -1046,7 +1145,7 @@ module ietf-schc {
      operations in fields.
      This data model applies to both compression and fragmentation.";
 
-  revision 2026-08-29 {
+  revision 2026-09-22 {
     description
       "Wire the 'nature-management' Rule nature into the data
        model: widen 'compression-content-universal''s
@@ -1645,7 +1744,7 @@ module ietf-schc {
                 Section 6.4)";
   }
 
-   identity fid-coap-option-oscore-flags-flags {
+   identity fid-coap-option-oscore-flags-flagbits {
     base fid-coap-option-oscore-flags;
     description
       "First 5 bits of the OSCORE flags field forming flags subfield.";
@@ -1706,7 +1805,7 @@ module ietf-schc {
       "draft-ietf-core-oscore-key-update";
   }
 
-  identity fid-coap-option-kudos-x-flags {
+  identity fid-coap-option-kudos-x-flagbits {
     base fid-coap-option-kudos-x;
     description
       "4 first bits of the x field in the kudos option defined in 
@@ -2760,6 +2859,49 @@ module ietf-schc {
      is available. */
   }
 
+  identity action-base-type {
+    description
+      "Action applied to a packet matching a compression Rule, once
+       compression has been performed (or before decompression is
+       performed in the other direction). The default behavior of
+       RFC 8724 is to hand the SCHC Packet over to the lower layer;
+       other actions allow an intermediate entity, typically the
+       SCHC gateway, to process the packet locally instead.";
+    reference
+      "draft-barthel-lpwan-oam-schc-05 OAM for LPWAN using Static
+                Context Header Compression (SCHC) (see Section 5)";
+  }
+
+  identity action-forward {
+    base action-base-type;
+    description
+      "The packet is handed over to the lower layer. This is the
+       default behavior specified in RFC 8724.";
+    reference
+      "RFC 8724 SCHC: Generic Framework for Static Context Header
+                Compression and Fragmentation";
+  }
+
+  identity action-proxy-ping {
+    base action-base-type;
+    description
+      "The packet is not handed over to the lower layer but
+       processed locally by a ping proxy, which answers the ICMPv6
+       Echo Request on behalf of the Device.";
+    reference
+      "draft-barthel-lpwan-oam-schc-05 OAM for LPWAN using Static
+                Context Header Compression (SCHC) (see Section 5)";
+  }
+
+  typedef action-type {
+    type identityref {
+      base action-base-type;
+    }
+    description
+      "Defines the type to indicate the action associated with a
+       compression Rule.";
+  }
+
   grouping compression-content {
     status deprecated;
     list entry {
@@ -2806,6 +2948,25 @@ module ietf-schc {
         "A compression Rule is a list of Rule entries, each
          describing a header field or Universal Option. An entry
          is identified by its entry-index.";
+    }
+
+    leaf action {
+      type action-type;
+      default "schc:action-forward";
+      description
+        "Action to be applied to a packet matching this Rule, after
+         compression or before decompression. When absent, the
+         packet is sent to the lower layer as specified in
+         RFC 8724.";
+    }
+
+    list action-value {
+      key "index";
+      uses tv-struct;
+      description
+        "Parameters associated with the action, based on a TV
+         structure, in order to allow for several arguments.
+         'action-forward' requires no argument.";
     }
 
     description
@@ -3197,19 +3358,9 @@ module ietf-schc {
           with a iPatch, where the CORECONF payload contained in 'ipatch-sequence'.";
       }
 }
+<CODE ENDS>
 ~~~
 {: #fig-full-module title="Working Copy of the ietf-schc YANG Module"}
-
-# Security Considerations
-
-TODO Security
-
-# IANA Considerations
-
-TODO: register the (possibly updated) YANG module and namespace URI
-with IANA, referencing this document instead of RFC 9363.
-
---- back
 
 # Acknowledgments
 {:numbered="false"}
