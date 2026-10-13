@@ -330,38 +330,6 @@ cheap and unambiguous to reference from elsewhere within the same
 Rule, e.g. the "field-length-value" argument of a Field Length
 function, or a management operation targeting that entry.
 
-# New field-length functions {#field-length-functions}
-
-RFC 8824 {{RFC8824}} defines a specific length function for the
-Token field: when this function is specified, the value of the
-Token Length (TKL) is used to indicate the length of the field.
-{{I-D.ietf-schc-8824-update}} extends this principle to the Partial IV field
-for OSCORE.
-
-This approach is not scalable: a new function would have to be defined
-for every new protocol field whose length needs to be carried this way.
-This document instead introduces two new functions, "fl-length-bytes"
-and "fl-length-bits". They both take an argument, carried in the new
-Rule entry field "field-length-value", that points to the entry where
-the length is specified, referenced by its "entry-index" (see
-{{fig-compression-rule-entry}}). Having two separate functions, rather
-than a single generic one, also conveys the unit of the length value:
-bytes for "fl-length-bytes", bits for "fl-length-bits".
-
-* "fl-length-bytes" generalizes "fl-token-length": for example,
-  "fl-token-length" is now equivalent to "fl-length-bytes(index)",
-  where "index" is the "entry-index" of the CoAP TKL field.
-* "fl-length-bits" is the bit-level equivalent of "fl-length-bytes".
-
-This document also introduces "fl-remaining", for an entry that is
-always the last one in the Rule, such as the "fid-payload" Field ID
-of {{I-D.ietf-schc-icmpv6-compression}}.
-Unlike "fl-variable", which prefixes its residue with an explicit
-length, "fl-remaining" accepts a
-field of any length but does not add that prefix when serializing
-the residue: being the last entry, its residue already runs to the
-end of the compression residue and needs no delimiter.
-
 ## Space ID
 
 Several protocols define options: CoAP {{RFC7252}} is one example,
@@ -493,6 +461,39 @@ identity fid-coap-option-uri-path {
 ~~~
 {: #fig-fid-coap-option-deprecated title="Example: Deprecating a Per-Option CoAP FID (fid-coap-option-uri-path)"}
 
+# New field-length functions {#field-length-functions}
+
+RFC 8824 {{RFC8824}} defines a specific length function for the
+Token field: when this function is specified, the value of the
+Token Length (TKL) is used to indicate the length of the field.
+{{I-D.ietf-schc-8824-update}} extends this principle to the Partial IV field
+for OSCORE.
+
+This approach is not scalable: a new function would have to be defined
+for every new protocol field whose length needs to be carried this way.
+This document instead introduces two new functions, "fl-length-bytes"
+and "fl-length-bits". They both take an argument, carried in the new
+Rule entry field "field-length-value", that points to the entry where
+the length is specified, referenced by its "entry-index" (see
+{{fig-compression-rule-entry}}). Having two separate functions, rather
+than a single generic one, also conveys the unit of the length value:
+bytes for "fl-length-bytes", bits for "fl-length-bits".
+
+* "fl-length-bytes" generalizes "fl-token-length": for example,
+  "fl-token-length" is now equivalent to "fl-length-bytes(index)",
+  where "index" is the "entry-index" of the CoAP TKL field.
+* "fl-length-bits" is the bit-level equivalent of "fl-length-bytes".
+
+This document also introduces "fl-remaining", for an entry that is
+always the last one in the Rule, such as the "fid-payload" Field ID
+of {{I-D.ietf-schc-icmpv6-compression}}.
+Unlike "fl-variable", which prefixes its residue with an explicit
+length, "fl-remaining" accepts a
+field of any length but does not add that prefix when serializing
+the residue: being the last entry, its residue already runs to the
+end of the compression residue and needs no delimiter.
+
+
 # Syntactic compression
 
 
@@ -576,7 +577,7 @@ parts of a single CoAP option (OSCORE, KUDOS), not as a stand-in for
 an arbitrary CoAP option, and are therefore unaffected: they remain
 "current".
 
-## Field Length Functions {#field-length-functions}
+## Field Length Functions {#oscore-field-length}
 
 This is what {{oscore-kudos-fids}} relies on: the OSCORE and KUDOS
 Flags field is split so that its length indicator
@@ -751,6 +752,19 @@ Three new Field Length functions support these structures
 
 The full YANG module, with all the identities, leaves and lists
 discussed here, is specified in {{I-D.toutain-schc-rfc9363bis}}.
+
+# Security Considerations
+
+This document does not change the SCHC security model: the security
+considerations of {{RFC8724}} and {{RFC9363}} apply unchanged, and a
+SCHC Context remains security sensitive, since the decompressor
+rebuilds a header from it.
+
+Universal Options, and more so the syntactic representation, let a
+Rule describe an option the implementation does not know, and
+therefore elide and rebuild it on the sole basis of the Rule. This is
+a reason to authenticate the source of a Rule modification, rather
+than a new weakness of the compression scheme.
 
 --- back
 
