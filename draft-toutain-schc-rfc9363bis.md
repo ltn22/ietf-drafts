@@ -1,10 +1,10 @@
 ---
-title: "Toward RFC 9363bis: Changes to the SCHC YANG Data Model"
-abbrev: "Toward SCHC YANG Model bis"
+title: "RFC 9363bis: Changes to the SCHC YANG Data Model"
+abbrev: "SCHC YANG Model bis"
 category: std
 intendedstatus: Informational
 ipr: trust200902
-docname: draft-toutain-schc-toward-rfc9363bis-00
+docname: draft-toutain-schc-rfc9363bis-00
 submissiontype: IETF
 number:
 date:
