@@ -44,6 +44,13 @@ author:
         code: 35576
         country: France
         email: Laurent.Toutain@imt-atlantique.fr
+      - name: Samar Sirohi
+        org: Institut MINES TELECOM; IMT Atlantique
+        street: 2 rue de la Chataigneraie CS 17607
+        city: Cesson-Sevigne Cedex
+        code: 35576
+        country: France
+        email: Samar.Sirohi@imt-atlantique.fr
 
 normative:
   RFC7252:
