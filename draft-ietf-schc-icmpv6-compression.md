@@ -729,34 +729,55 @@ still contains only the ICMPv6 type and code. Used with
 residue, as detailed in {{fig-example-icmpv6}} and its residue layout
 ({{fig-icmpv6-residue}}).
 
-# YANG identities and tree {#yang-tree}
+# YANG Data Model Extensions {#yang-tree}
 
-This YANG module extends Field ID identities defined in {{RFC9363}}to
-includes fields contained in ICMPv6 header. Note that the ICMPv6 payload
-is parsed to the specific field `fid-icmpv6-payload`
+This document extends the SCHC YANG Data Model of {{RFC9363}}. The
+complete YANG module, including all the identities and the leaves
+listed below, is found in {{I-D.toutain-schc-rfc9363bis}}. This
+section only lists the elements related to this document.
 
-It also defines two new Mactching Operator identities:
+The new Field IDs, all based on `fid-icmpv6-base-type` for the ICMPv6
+ones ({{new-fid}}):
 
-* `mo-rev-rule-match`: The value contained in the Field Value matches a
-  rule. The direction used for matching is the opposite of the incoming
+* `fid-icmpv6-type`, `fid-icmpv6-code`, `fid-icmpv6-checksum`,
+  `fid-icmpv6-mtu`, `fid-icmpv6-pointer`, `fid-icmpv6-identifier`,
+  `fid-icmpv6-sequence`: the fields of the ICMPv6 header.
+* `fid-icmpv6-payload`: the ICMPv6 payload, parsed as a specific field.
+* `fid-unused`: skips an unused part of a header.
+* `fid-payload`: the trailing payload of the packet, which uses the
+  `fl-remaining` Field Length function of
+  {{I-D.ietf-schc-universal-option}}.
+
+The new Matching Operators ({{newMO}}):
+
+* `mo-rev-rule-match`: the value contained in the Field Value matches a
+  Rule. The direction used for matching is the opposite of the incoming
   message: UP becomes DOWN and DOWN becomes UP. This MO can be used to
-  test if the Payload contained in the ICMPv6 message matches a rule.
-  This means that the original packet, at the origine of the ICMPv6
+  test if the Payload contained in the ICMPv6 message matches a Rule.
+  This means that the original packet, at the origin of the ICMPv6
   message, may have been generated from the SCHC decompression.
-* `mo-rule-match`: The value contained in the Target Value matches a rule.
-  The direction is the one of the incoming message. This MO is not used
-  for ICMPv6 messages, but since it can be used in other situations, it
-  has been included in the Data Model.
+* `mo-rule-match`: the value contained in the Target Value matches a
+  Rule. The direction is the one of the incoming message. This MO is
+  not used for ICMPv6 messages, but since it can be used in other
+  situations, it has been included in the Data Model.
 
-The Field Value may be compressed by a rule. The result SHOULD be
-included in the SCHC message as a variable length residue. It contains
-the Rule ID used by the compression, the residue, the payload and some
-padding bits since the variable length in it is in bytes.
+The new Compression/Decompression Actions ({{newMO}}). The Field Value
+may be compressed by a Rule. The result SHOULD be included in the SCHC
+message as a variable length residue. It contains the Rule ID used by
+the compression, the residue, the payload and some padding bits, since
+the variable length in it is in bytes.
 
-* `cda-rev-compress-sent`: The direction used for compression is the
+* `cda-rev-compress-sent`: the direction used for compression is the
   opposite of the incoming message: UP becomes DOWN and DOWN becomes UP.
-* `cda-compress-sent`: The direction used for compression is the same as
-  for the incoming message.
+* `cda-compress-sent`: the direction used for compression is the same
+  as for the incoming message.
+
+The new elements of the Rule and the Action identities ({{action}}):
+
+* `action` and `action-value`: leaves of the compression Rule, as
+  siblings of its entries, giving the Action and its arguments.
+* `action-base-type`, `action-forward`, `action-proxy-ping`: the
+  identities of the Actions.
 
 # Security considerations {#security-considerations}
 
@@ -837,3 +858,6 @@ draft. Their contribution is deeply appreciated and acknowledged.
 * {{action}}: in {{fig-action-rule}}, the Echo Request Type is written 128 (it was 80,
   its hexadecimal value) and the Code and Sequence Number target values 0, like the
   other tables; the paragraph layout was cleaned up.
+* {{yang-tree}}: the section was renamed "YANG Data Model Extensions" and now
+  lists every YANG element related to this document (Field IDs, MOs, CDAs,
+  Action), stating that the complete module is in {{I-D.toutain-schc-rfc9363bis}}.
