@@ -172,7 +172,9 @@ These fields are present in all the messages:
 * ICMPv6 Code is related to the ICMPv6 type and does not have an impact
   on the message format.
 * ICMPv6 Checksum covers the ICMPv6 message and part of the IPv6 header
-  to protect against errors.
+  to protect against errors. It is generally
+  reconstructed with the `compute-*` CDA and therefore is not
+  transmitted.
 * ICMPv6 Payload is part of the ICMPv6 protocol and is not directly
   originated from upper layers protocols, so this field may be
   compressed by SCHC at the ICMPv6 level. In the ICMPv6 error message,
@@ -262,7 +264,7 @@ header's, and are designed from the ICMPv6 message's point of view.
 
 Fields designed with an application or device role remain unchanged
 (e.g. `ipv6-deviid` or `udp-app-port`), but the direction is
-reversed. Field Position is also incremented if a field is repeated,
+reversed during parsing. Field Position is also incremented if a field is repeated,
 as for the IPv6 fields in the example.
 
 The compression mechanism MUST also include the port numbers: an
@@ -310,15 +312,31 @@ reconstruct the Layer 4 header this way, not just the ports.
 | 30 | payload | remaining | 1 | Bi | - | ignore | not-sent |
 {: #fig-alt-icmpv6 title="ICMPv6 Rule Embedding the Invoking IPv6/UDP Header In Place"}
 
+The `unused` entry skips the 32 bits following the Checksum.
+
 Note that the IPv6 fields of the invoking header are not sent as residue, but
 are used to check that the ICMPv6 packet is not rogue: an error
 message whose invoking header does not match the Rule is not
 decompressed.
 
 
-The compression result should be better, since there is no need to
-send a variable-length residue and a second RuleID, at the cost of
-a more complex Rule definition.
+The result is compact: the payload is elided and the fields of the
+invoking IPv6 header are not sent. They are nevertheless matched
+against the Rule, which helps to validate that the ICMPv6 message
+refers to a packet that really was exchanged with the Device.
+
+Compared to the solution compressing the invoking packet with its own
+Rule ({{newMO}}), this one has the following advantages:
+
+* the residue contains a single RuleID, whereas the other solution
+  sends a second RuleID for the invoking packet;
+* no length has to be sent to delimit the compressed invoking packet,
+  and no padding is needed between the two parts.
+
+These advantages come at a cost: the Rule is longer, and since it
+describes the complete stack, a Rule is needed for each original
+packet format, where the other solution needs a single ICMPv6 Rule
+for all of them.
 
 ~~~ aasvg
 +----------+------------------------------------------+
@@ -330,15 +348,17 @@ a more complex Rule definition.
 ## New Matching Operators and Compression/Decompression Actions {#newMO}
 
 Instead of describing the invoking packet in the same Rule, it can be
-compressed with its own Rule. This document introduces the
-`mo-rule-match`/`mo-rev-rule-match` Matching Operators and the
-`cda-compress-sent`/`cda-rev-compress-sent` Compression/
-Decompression Actions. `mo-rule-match` returns true if the Target
-Value matches another Rule, keeping the Up/Down direction;
-`mo-rev-rule-match` does the same but reversing that direction;
-`cda-compress-sent` and `cda-rev-compress-sent` send a compressed
-version of the Target Value, using respectively the matched Rule or
-its direction-reversed counterpart.
+compressed with its own Rule. This document introduces two Matching
+Operators and two Compression/Decompression Actions:
+
+* `mo-rule-match`: returns true if the Target Value matches another
+  Rule, keeping the Up/Down direction.
+* `mo-rev-rule-match`: same as `mo-rule-match`, but reversing the
+  Up/Down direction.
+* `cda-compress-sent`: sends a compressed version of the Target
+  Value, using the matched Rule.
+* `cda-rev-compress-sent`: same as `cda-compress-sent`, using the
+  direction-reversed counterpart of the matched Rule.
 
 The reversed forms exist because, per RFC 4443 {{RFC4443}}, an
 ICMPv6 error message carries back as much as possible of the IPv6
@@ -381,8 +401,7 @@ full.
 | 14 | icmpv6-payload | variable-bits | 1 | Dw | 0 | rev-rule-match | rev-compress-sent |
 {: #fig-example-icmpv6 title="ICMPv6 Error Compressed Against a Reverse-Direction Rule"}
 
-Note in {{fig-example-icmpv6}} the `unused` entry, skipping the 32 bits
-following the Checksum. The remaining bytes are assigned to `icmpv6-payload` and
+The bytes following the `unused` entry are assigned to `icmpv6-payload` and
 contain the original (invoking) header. If a Rule in the context
 matches that payload, compression applies to it as well.
 
@@ -436,9 +455,6 @@ If we assume that one rule will be devoted to compressing Echo Request
 messages, then the Type and Code are known in the rule to be 128 and 0
 and can therefore be elided with the not-sent CDA.
 
-Checksum can be reconstructed with the compute-* CDA and therefore is
-not transmitted.
-
 {{RFC4443}} states that the identifier and sequence number are meant to
 "help in matching Echo Responses to this Echo Request" and that they
 "may be zero". Data are "zero or more bytes of arbitrary data".
@@ -489,6 +505,79 @@ The transmission cost of the Echo Request message is therefore the size
 of the Rule Id + 3 bits and the data size increased of the Payload
 residue size. The rule ID Length can be chosen to avoid adding padding.
 
+# Device is pinged {#action}
+
+If a Device is pinged, a Rule similar to the one described in the
+previous section can be used, but it may be more efficient to delegate
+the answer to the SCHC Core.
+
+Selecting a compression Rule triggers compression and sends the
+resulting SCHC Packet to the other end.
+
+We introduce a new element called `action` for the Rule. An Action
+can change that behavior: the Rule is still selected through its MO
+results, but the incoming packet is forwarded to a procedure defined in
+the `action`. Since the Rule is then used only for the selection, the
+Compression/Decompression Actions of its entries do not matter and are
+set to `not-sent`.
+
+The motivating example is an ICMPv6 {{RFC4443}} Echo Request sent to
+a Device. The Device receives the compressed message and answers
+with an Echo Reply, but propagating the Echo Request over the LPWAN
+costs two messages on a constrained link, and the Identifier and
+Sequence Number fields compress poorly when the sender is unaware of
+the compression scheme. The Action `action-proxy-ping` avoids that
+traffic: the core SCHC C/D answers the Echo Request on behalf of the
+Device.
+
+The Action takes a parameter, in seconds, giving the interval during
+which the Device is considered active. During this interval, the
+proxy echoes the ping requests; after it, they are discarded. The
+parameter is carried in `action-value`, a list reusing the Target
+Value structure, so an Action may take several arguments.
+
+{{fig-action-rule}} shows a compression Rule for pinging a Device,
+with the identity short names used in the Field and CDA columns. The
+Action applies to the Rule as a whole, and is therefore shown above its
+entries.
+
+~~~ aasvg
++--------------------------+
+| Action: proxy-ping(300)  |
++----+----------------+----+----+----+----+---------+----------+
+| #  | Field          | FL | FP | DI | TV | MO      | CDA      |
++----+----------------+----+----+----+----+---------+----------+
+| IPv6 Headers description (omitted)                           |
++----+----------------+----+----+----+----+---------+----------+
+| 10 | icmpv6-type    | 8  | 1  | Dw | 128| equal   | not-sent |
+| 11 | icmpv6-code    | 8  | 1  | Bi | 0  | equal   | not-sent |
+| 12 | icmpv6-        | 16 | 1  | Bi | -  | ignore  | not-sent |
+|    | identifier     |    |    |    |    |         |          |
+| 13 | icmpv6-        | 16 | 1  | Bi | 0  | MSB(24) | not-sent |
+|    | sequence       |    |    |    |    |         |          |
++----+----------------+----+----+----+----+---------+----------+
+~~~
+{: #fig-action-rule title="Example Compression Rule for a Ping to a Device"}
+
+In the data model, the Action is added to the compression Rule
+itself, as a sibling of its entries, and not to a single entry:
+
+* `action`: an identityref to `action-type`, defaulting to
+  `action-forward`. Being optional and defaulted, a Rule that does
+  not carry it behaves exactly as in RFC 8724 {{RFC8724}}.
+* `action-value`: the Action's arguments, a list based on the Target
+  Value structure, as for Matching Operator and
+  Compression/Decompression Action arguments.
+
+The corresponding new identities are:
+
+* `action-base-type`: base identity for the Action applied to a
+  packet matching a compression Rule.
+* `action-forward`: the default, where the packet is handed over to
+  the lower layer, as specified in RFC 8724 {{RFC8724}}.
+* `action-proxy-ping`: the packet is processed locally by a ping
+  proxy, which answers the Echo Request on behalf of the Device.
+
 # Device is the source of an ICMPv6 error message {#ProxyErrMsg}
 
 As stated in {{RFC4443}}, a node should generate an ICMPv6 message in
@@ -500,7 +589,7 @@ LPWAN network this un-necessary traffic. The incorrect packets should be
 caught at the SCHC Core and the ICMPv6 notification should be sent back
 from there.
 
-~~~
+~~~ aasvg
      Device       NGW     SCHC Core                    Internet Host
 
        |           |            |    Destination Port=XXX    |
@@ -528,8 +617,9 @@ In that case the SCHC C/D MAY act as a router (i.e. it MUST have a
 routable IPv6 address to generate an ICMPv6 message). When compressing a
 packet containing an IPv6 header, no compression rules are found and:
 
-* if a rule contains some extension headers, a parameter problem may be
-  generated (type 4),
+* if the incoming packet contains some extension headers and no SCHC
+  Rule covers this case, a parameter problem may be generated
+  (type 4),
 * no rule contains the IPv6 device address found in the incoming packet,
   a no route to destination ICMPv6 message (type 0, code 3) may be
   generated,
@@ -551,11 +641,10 @@ periodic reporting of data.
 Therefore, the ICMPv6 error message should reach the Device. The data
 inside this error message includes the packet at the origin of the
 error. It should be compressed by the SCHC Core, but in the reverse
-direction. New MOs and CDAs are introduced to perform this operation.
-The MO check is a rule that matches the Target Value in the forward or
-reverse direction and the CDA performs this compression.
+direction. The MOs and CDAs defined in {{newMO}} perform this
+operation.
 
-~~~
+~~~ aasvg
      Device       NGW     SCHC Core                    Internet Server
 
        |           |            |                            |
@@ -631,42 +720,14 @@ code as residue to the device.
 | 14 | icmpv6-payload | remaining | 1 | Dw | 0 | ignore | not-sent | 0 |
 {: #Fig-icmp-error1 title="Example of compression rule for a ICMP error to a device"}
 
-The second rule example {{Fig-icmp-error2}} also only sends the ICMP
-type and code as residue to the device, but introduces the new MO
-`rev-rule-match`. This MO will check if a rule matches the payload.
-
-| # | Field | FL | FP | DI | TV | MO | CDA | Sent bits |
-|---|---|---|---|---|---|---|---|---|
-| 0-9 | *IPv6 headers description* |  |  |  |  |  |  |  |
-| 10 | icmpv6-type | 8 | 1 | Dw | 3 | equal | not-sent |  |
-| 11 | icmpv6-code | 8 | 1 | Dw | \[0,1\] | match-mapping | mapping-sent | 1 |
-| 12 | icmpv6-checksum | 16 | 1 | Dw |  | ignore | compute-* |  |
-| 13 | unused | 32 | 1 | Dw | 0 | ignore | not-sent |  |
-| 14 | icmpv6-payload | remaining | 1 | Dw | 0 | rev-rule-match | not-sent |  |
-{: #Fig-icmp-error2 title="Example of compression rule for a ICMP error to a device"}
-
-By {{RFC4443}}, the rest of the ICMPv6 message must contain as much as
-possible of the IPv6 offending (invoking) packet that triggered this
-ICMPv6 error message. This information is used to try and identify the
-SCHC rule that was used to decompress the offending IPv6 packet. If the
-rule can be found, then the Rule Id is added at the end of the
-compressed ICMPv6 message. Otherwise, the compressed packet ends with
-the compressed Value field.
-
-The third rule example {{Fig-icmp-error3}} also sends the ICMP type,
-code, and the compresssed payload as residue. It can be noted that this
-field is identified as `variable` in the rule, which will introduce a
-size before the IPv6 compressed header of 4 or 12 bits.
-
-| # | Field | FL | FP | DI | TV | MO | CDA | Sent bits |
-|---|---|---|---|---|---|---|---|---|
-| 0-9 | *IPv6 headers description* |  |  |  |  |  |  |  |
-| 10 | icmpv6-type | 8 | 1 | Dw | 3 | equal | not-sent |  |
-| 11 | icmpv6-code | 8 | 1 | Dw | \[0,1\] | match-mapping | mapping-sent | 1 |
-| 12 | icmpv6-checksum | 16 | 1 | Dw |  | ignore | compute-* |  |
-| 13 | unused | 32 | 1 | Dw | 0 | ignore | not-sent |  |
-| 14 | icmpv6-payload | remaining | 1 | Dw | 0 | rev-rule-match | rev-compress-sent | compressed IPv6 header*8 |
-{: #Fig-icmp-error3 title="Example of compression rule for a ICMP error to a device"}
+The compression of the offending packet in the reverse direction relies
+on the `rev-rule-match` MO and the `rev-compress-sent` CDA defined in
+{{newMO}}. Used with the `not-sent` CDA, `rev-rule-match` only checks
+that a Rule matches the payload, which is then elided, so the residue
+still contains only the ICMPv6 type and code. Used with
+`rev-compress-sent`, the offending packet is compressed and sent as
+residue, as detailed in {{fig-example-icmpv6}} and its residue layout
+({{fig-icmpv6-residue}}).
 
 # YANG identities and tree {#yang-tree}
 
@@ -748,3 +809,31 @@ draft. Their contribution is deeply appreciated and acknowledged.
 * {{parsing-payload}}: the sentence stating that the in-place description of the
   invoking packet requires a Rule for each original packet format was moved
   from the end of the subsection to its introduction.
+* {{parsing-payload}}: rewrote the paragraph following {{fig-alt-icmpv6}} (it
+  said the result "should be better", which no longer follows the other
+  solution) and added objective arguments comparing the two solutions.
+* {{parsing-payload}}: the note on the `unused` entry was moved from the second
+  example ({{fig-example-icmpv6}}) to the first one ({{fig-alt-icmpv6}}).
+* {{newMO}}: the list of the new MOs and CDAs was merged with their
+  descriptions, with one item per identifier.
+* {{basicICMPv6}}, {{DevicePings}}: the remark that the Checksum is
+  reconstructed with the `compute-*` CDA was moved from the ping section to the
+  description of the ICMPv6 Checksum field.
+* {{ProxyErrMsg}}: the Parameter Problem case now states that the incoming
+  packet contains extension headers that no SCHC Rule covers.
+* {{device-is-the-destination}}: removed the duplicate explanation of
+  `rev-rule-match` and the second and third rule examples
+  (`Fig-icmp-error2`, `Fig-icmp-error3`), now covered by {{newMO}} and
+  {{fig-example-icmpv6}}, which are referenced instead.
+* {{action}} ("Device is pinged"): new section copied from {{I-D.toutain-schc-rfc9363bis}}, describing the
+  Action of a Rule (`action`, `action-value`, `action-forward`,
+  `action-proxy-ping`) with the ping proxy example; the reference to the
+  entry-index column and short names of the other draft was reworded, and the
+  reference to the draft-barthel-lpwan-oam-schc draft was removed.
+* {{action}}: the section now starts by stating that a Rule similar to the one of
+  {{DevicePings}} can be used, but that it may be more efficient to delegate
+  the answer to the SCHC Core.
+* {{action}}: added the sentence introducing the new `action` element of the Rule.
+* {{action}}: in {{fig-action-rule}}, the Echo Request Type is written 128 (it was 80,
+  its hexadecimal value) and the Code and Sequence Number target values 0, like the
+  other tables; the paragraph layout was cleaned up.
