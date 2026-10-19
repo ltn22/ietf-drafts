@@ -541,19 +541,22 @@ In this representation:
 * "CoAP.value" contains the actual option value, whose length is
   given by the "CoAP.length" entry.
 
-# OSCORE and KUDOS Suboptions {#oscore-kudos-fids}
+# Fields of the OSCORE Option for OSCORE and KUDOS {#oscore-kudos-fids}
 
 Universal Options allow any option to be compressed following the
 SCHC principle, but compression can be more efficient when the
 sub-fields of an option are taken into account individually. This is
-why the module introduces specific fields for OSCORE {{RFC8613}} and
-KUDOS {{I-D.ietf-core-oscore-key-update}}: each option is split into
-sub-fields, each with its own identity ("fid-coap-option-oscore-piv",
-"fid-coap-option-oscore-kid", "fid-coap-option-oscore-kidctx",
-"fid-coap-option-kudos-nonce", etc.).
+why the module introduces specific fields of the OSCORE Option,
+separately for OSCORE {{RFC8613}} and
+KUDOS {{I-D.ietf-core-oscore-key-update}}: the OSCORE Option value is
+split into sub-fields, each with its own identity
+("fid-coap-option-oscore-piv", "fid-coap-option-oscore-kid",
+"fid-coap-option-oscore-kidctx", "fid-coap-option-kudos-nonce",
+etc.).
 
-Note that the Flags field, for both OSCORE and KUDOS, is also split
-so that its length indicator becomes a specific field of its own:
+Note that flag-related fields, such as the OSCORE flag bits for OSCORE
+and the x byte for KUDOS, are also distinct and split so that its
+length indicator becomes a specific field of its own:
 "fid-coap-option-oscore-flags-flagbits"/"fid-coap-option-oscore-flags-n"
 for OSCORE, and "fid-coap-option-kudos-x-flagbits"/
 "fid-coap-option-kudos-x-m" for KUDOS. This will be exploited by the
@@ -570,17 +573,18 @@ length, they cannot directly represent this relationship. KUDOS
 therefore requires separate handling of this length transformation.
 
 "fid-coap-option" itself is kept "current": it is still used,
-unchanged, as the base identity of these OSCORE and KUDOS suboption
-FIDs. Unlike the twenty per-option FIDs deprecated in the previous
+unchanged, as the base identity of these OSCORE-related and
+KUDOS-related sub-field FIDs. Unlike the twenty per-option FIDs deprecated in the previous
 subsection, they use "fid-coap-option" as a typing hierarchy for
-parts of a single CoAP option (OSCORE, KUDOS), not as a stand-in for
+parts of a single CoAP option (OSCORE), not as a stand-in for
 an arbitrary CoAP option, and are therefore unaffected: they remain
 "current".
 
 ## Field Length Functions {#oscore-field-length}
 
-This is what {{oscore-kudos-fids}} relies on: the OSCORE and KUDOS
-Flags field is split so that its length indicator
+This is what {{oscore-kudos-fids}} relies on: in the OSCORE Option
+value, the flag-related fields for OSCORE and KUDOS are distinct and
+split, so that its length indicator
 ("fid-coap-option-oscore-flags-n", "fid-coap-option-kudos-x-m") is
 its own entry; "fl-length-bytes" or "fl-length-bits" can then use
 that entry's "entry-index" to derive the length of the corresponding
@@ -627,7 +631,7 @@ the ones defined in the YANG module, without their prefix ("fid-",
 |    | oscore-flags-n |          |    |    |    |        |          |
 | 9  | coap-option-   | length-  | 1  | Up | -  | ignore | value-   |
 |    | oscore-piv     | bytes(8) |    |    |    |        | sent     |
-| 10 | coap-option-   | 0        | 1  | Up | 00 | equal  | not-sent |
+| 10 | coap-option-   | 0        | 1  | Up | -  | equal  | not-sent |
 |    | oscore-kidctx  |          |    |    |    |        |          |
 | 11 | coap-option-   | var      | 1  | Up | -  | ignore | value-   |
 |    | oscore-kid     |          |    |    |    |        | sent     |
