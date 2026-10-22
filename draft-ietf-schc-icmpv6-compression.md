@@ -27,6 +27,11 @@ author:
     code: "35576"
     country: "France"
     email: laurent.toutain@imt-atlantique.fr
+ -
+    ins: M. Dumay
+    name: Marion Dumay
+    org: "Orange"
+    email: marion.dumay@orange.com
 
 normative:
   I-D.ietf-schc-universal-option:
@@ -861,3 +866,4 @@ draft. Their contribution is deeply appreciated and acknowledged.
 * {{yang-tree}}: the section was renamed "YANG Data Model Extensions" and now
   lists every YANG element related to this document (Field IDs, MOs, CDAs,
   Action), stating that the complete module is in {{I-D.toutain-schc-rfc9363bis}}.
+* Authors: added Marion Dumay as the last co-author.
