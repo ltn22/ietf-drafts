@@ -58,6 +58,8 @@ normative:
   RFC8040:
   RFC8949:
   RFC9254:
+  RFC8791:
+  RFC9595:
   I-D.ietf-core-sid:
   I-D.ietf-core-comi:
 
@@ -112,7 +114,57 @@ sensors returning an integer value.
 
 ~~~~
 <CODE BEGINS> file "sensor.yang"
-{::include sensor.yang}
+module sensor {
+  yang-version 1.1;
+  namespace "http://sensorexample.in/sensor-example";
+  prefix sen1;
+
+  identity battery-indicator-base-type {
+    description
+      "a base identity for battery level indicator";
+  }
+
+  identity high-level {
+    base battery-indicator-base-type;
+  }
+
+  identity med-level {
+    base battery-indicator-base-type;
+  }
+
+  identity low-level {
+    base battery-indicator-base-type;
+  }
+
+  typedef battery-level {
+    type identityref {
+      base battery-indicator-base-type;
+    }
+  }
+
+  container sensorObject {
+    leaf statusLED {
+      type enumeration {
+        enum green  {value 0;}
+        enum yellow {value 1;}
+        enum red {value 2;}
+      }
+    }
+    leaf battery {
+        type battery-level;
+    }
+    list sensorReadings {
+      key "index";
+      leaf index {
+        type uint8;
+      }
+      leaf sensorValue {
+        type uint32;
+      }
+
+    }
+  }
+}
 <CODE ENDS>
 ~~~~
 {: #Fig-YDM title="Example of a YANG Data Model for sensors"}
@@ -170,12 +222,7 @@ optimize the size of the representation, {{RFC9254}} defines a CBOR
 serialization, also used in CORECONF. YANG ASCII identifiers are
 replaced by unique number.
 
-LT: The next sentence is wrong, JSON do not have namespace, this is true for XML
-
-In JSON, the uniqueness is guaranteed by the "namespace" URI, as shown
-in {{Fig-YDM}}. By construction, the rest of the identifiers are unique.
-
-In CORECONF, the uniqueness is guaranteed through the use of positive
+In CORECONF, the map keys are numerical and unique through the use of positive
 integers called SID, which replace the ASCII identifiers.
 {{I-D.ietf-core-sid}} defines the allocation process. Module developers
 may ask for a SID range from their authority. For example, for an IETF
@@ -302,24 +349,14 @@ there is no such clue.
 On the other direction, a JSON string may correspond to a 64-bit long
 number, an enumeration, or an identityref.
 
-To perform the conversion, the YANG type is needed,
+To perform the conversion, the YANG type must be known, but do not
+appear in the SID file, a converter has to refer directly to the YANG
+model, which is a more complex structure to parse.
 
-
-LT: instead of focusing in the tool, focus on the .sid file format that must be extended and since .sid is rules by its own YANG model, the RFC 9595 definition must be augmented.
-
-
-but popular tools such as yanglint or pyang are not currently
-manipulating CBOR representation. Furthermore, these tools cannot run on
-constrained devices. To overcome these problems, we propose to extend
-the .sid file with more information. The modified pyang code (see
-https://github.com/ltn22/pyang/tree/sid-extension) adds useful
-information to the .sid file when the "--sid-extension" argument is
-provided.
-
-This extension contains a "type" key in the JSON Object describing the
-mapping between the SID and the identifier if the node is a leaf (see
-{{Fig-SID-extension}}).
-
+SID extension propose to add this information directly in the sid file
+but augmenting the YANG Data Model that defines it {{RFC9595}} (see
+{{Fig-SID-extension}}). The augmentation is specified in the YANG
+module of {{sid-ext-yang}}.
 
 ~~~~
 ...
@@ -334,7 +371,10 @@ mapping between the SID and the identifier if the node is a leaf (see
       "identifier": "/sensor:sensorObject/battery",
       "status": "unstable",
       "sid": 60006,
-      "type": "identityref"
+      "ietf-sid-file-extension:type": {
+        "base-type": "ietf-sid-file-extension:identityref",
+        "identityref": 60001
+      }
     },
     {
       "namespace": "data",
@@ -347,48 +387,50 @@ mapping between the SID and the identifier if the node is a leaf (see
       "identifier": "/sensor:sensorObject/sensorReadings/index",
       "status": "unstable",
       "sid": 60008,
-      "type": "uint8"
+      "ietf-sid-file-extension:type": {
+        "base-type": "ietf-sid-file-extension:uint8"
+      }
     },
     {
       "namespace": "data",
       "identifier": "/sensor:sensorObject/sensorReadings/sensorValue",
       "status": "unstable",
       "sid": 60009,
-      "type": "uint32"
-    },
-    {
-      "namespace": "data",
-      "identifier": "/sensor:sensorObject/statusLED",
-      "status": "unstable",
-      "sid": 60010,
-      "type": {
-        "0": "green",
-        "1": "yellow",
-        "2": "red"
+      "ietf-sid-file-extension:type": {
+        "base-type": "ietf-sid-file-extension:uint32"
       }
     }
 ...
 ~~~~
-{: #Fig-SID-extension title="SID "type" extension."}
+{: #Fig-SID-extension title="SID file with the type extension."}
 
-The "type" key added to leaf nodes contains several information:
+## YANG Data Model of the SID Extension {#sid-ext-model}
 
-* when the "type" key is not present, the node is a not leaf and there
-  is no need for type conversion.
-* when the value of "type" is a string, it gives the YANG type of the
-  leaf, as defined in the YANG Data Model. If the YANG type derives from
-  an identityref, the value "identityref" is given instead of the YANG
-  type specified in the module. In that case, in the CBOR notation,
-  there is a pair "{ ...., SID1: value1, ...} in the CBOR Map. A first
-  lookup at the .sid file for SID1 returns that the type is
-  "identityref", a second lookup for value1 in the "identity" namespace,
-  returns the ASCII identifier.
-* when the value of "type" is a JSON Object, then the leaf is a YANG
-  enumeration, and the CBOR Map gives the mapping between integer and
-  strings.
-* when the value of "type" is a JSON Array, then the YANG leaf is a
-  union. Elements of the Array list the possible types. In that case,
-  the conversion is leaded by the CBOR Tags associated to the value.
+The "type" container is added to each SID item that is a leaf.  When the
+"type" container is not present, the node is not a leaf and there is no
+need for type conversion.
+
+Its "base-type" leaf identifies the YANG built-in type of the leaf. The
+sid-extension data model (cf. {{sid-ext-yang}}) defines an identityref
+for each YANG built-in type. If the model uses a derived type, defined
+by a typedef, "base-type" gives the built-in type it derives from, since
+a typedef is not an item of the .sid file ({{RFC9595}}).
+
+For a type derived from an identityref, "base-type" is "identityref" and
+the "identityref" leaf gives the SID of the base identity. In the CBOR
+notation, a pair "{ ...., SID1: value1, ...}" in the CBOR Map is
+resolved by a first lookup in the .sid file for SID1, which returns that
+the type is "identityref", and a second lookup for value1 in the
+"identity" namespace, which returns the ASCII identifier.
+
+For an enumeration, the "enumerate" container associates a value
+("enum-value") with its name ("enum-name").
+
+For bits, the "bits" container associates a position ("bit-position")
+with its name ("bit-name").
+
+The container "type" may contain several structures reflecting a
+union, disambiguated by CORECONF through the use of CBOR tags.
 
 <!-- Should be https://github.com/alex-fddz/pycoreconf, some bugs items => item and pb with self.name -->
 We developed the pycoreconf Python module to facilitate the conversion
@@ -747,3 +789,255 @@ uint32_t  read_sensorValue(uint8_t index){
 }
 ~~~~~
 
+# pyang
+
+To perform the conversion, the YANG type is needed, but popular tools
+such as yanglint or pyang are not currently manipulating CBOR
+representation. Furthermore, these tools cannot run on constrained
+devices. To overcome these problems, we propose to extend the .sid file
+with more information. The modified pyang code (see
+https://github.com/ltn22/pyang/tree/sid-extension) adds useful
+information to the .sid file when the "--sid-extension" argument is
+provided.
+
+This extension contains a "type" key in the JSON Object describing the
+mapping between the SID and the identifier if the node is a leaf (see
+{{Fig-SID-extension}}).
+
+The information is taken from the YANG Data Model while the .sid file is
+generated. For each leaf, pyang looks at its "type" statement:
+
+* an identityref, including when it is defined through a typedef, is
+  reported as "identityref";
+* for an enumeration, the values and the names of its items are
+  collected;
+* for a union, the type of each member is reported. An identityref is
+  placed first, since it is more specific than the other types.
+
+For each list, pyang also records the key leaves, in order, in a
+"key-mapping" entry. Their identifiers are replaced by their SIDs once
+the SIDs are allocated.
+
+--- back
+
+# YANG Module for the SID File Extension {#sid-ext-yang}
+
+The module below augments the "ietf-sid-file" module of {{RFC9595}}
+using the structure augmentation of {{RFC8791}}. It adds the type
+information to each SID item and a key-mapping at the "sid-file" level.
+
+~~~~ yang
+<CODE BEGINS> file "ietf-sid-file-extension@2026-07-19.yang"
+module ietf-sid-file-extension {
+  yang-version 1.1;
+  namespace "urn:ietf:params:xml:ns:yang:ietf-sid-file-extension";
+  prefix sid-ext;
+
+  import ietf-sid-file {
+    prefix sid;
+    reference "RFC 9595";
+  }
+
+  import ietf-yang-structure-ext {
+    prefix sx;
+    reference "RFC 8791";
+  }
+
+  organization "Personal contribution";
+  contact
+    "Editor: Laurent Toutain
+      <mailto:laurent.toutain@imt-atlantique.fr>
+
+             Javier A. Fernandez
+             <mailto:javier-alejandro.fernandez@imt-atlantique.fr>
+
+             Vojtěch Vilímek
+             <mailto:vojtech.vilimek@nic.cz>";
+  description
+    "Augmentation of ietf-sid-file to add type information
+     per item and key-mapping at the sid-file level.";
+
+  revision 2026-07-19 {
+    description "IETF 126 Hackathon refinements";
+  }
+
+  revision 2026-04-28 {
+    description "Initial revision.";
+  }
+
+  // it may be better if NETMOD created a YANG Module
+  // with identities for built-in types
+
+  identity yang-base-type {
+    description "Base identity for all YANG built-in types.";
+  }
+
+  identity anydata {
+    base yang-base-type;
+    description "YANG built-in type anydata.";
+  }
+
+  identity anyxml {
+    base yang-base-type;
+    description "YANG built-in type anyxml.";
+  }
+
+  identity binary {
+    base yang-base-type;
+    description "YANG built-in type binary.";
+  }
+
+  identity boolean {
+    base yang-base-type;
+    description "YANG built-in type boolean.";
+  }
+
+  identity decimal64 {
+    base yang-base-type;
+    description "YANG built-in type decimal64.";
+  }
+
+  identity empty {
+    base yang-base-type;
+    description "YANG built-in type empty.";
+  }
+
+  identity identityref {
+    base yang-base-type;
+    description "YANG built-in type identityref.";
+  }
+
+  identity instance-identifier {
+    base yang-base-type;
+    description "YANG built-in type instance-identifier.";
+  }
+
+  identity int8 {
+    base yang-base-type;
+    description "YANG built-in type int8.";
+  }
+
+  identity int16 {
+    base yang-base-type;
+    description "YANG built-in type int16.";
+  }
+
+  identity int32 {
+    base yang-base-type;
+    description "YANG built-in type int32.";
+  }
+
+  identity int64 {
+    base yang-base-type;
+    description "YANG built-in type int64.";
+  }
+
+  identity leafref {
+    base yang-base-type;
+    description "YANG built-in type leafref.";
+  }
+
+  identity string {
+    base yang-base-type;
+    description "YANG built-in type string.";
+  }
+
+  identity uint8 {
+    base yang-base-type;
+    description "YANG built-in type uint8.";
+  }
+
+  identity uint16 {
+    base yang-base-type;
+    description "YANG built-in type uint16.";
+  }
+
+  identity uint32 {
+    base yang-base-type;
+    description "YANG built-in type uint32.";
+  }
+
+  identity uint64 {
+    base yang-base-type;
+    description "YANG built-in type uint64.";
+  }
+
+  identity union {
+    base yang-base-type;
+    description "YANG built-in type union.";
+  }
+
+  typedef yang-type {
+    type identityref {
+      base yang-base-type;
+    }
+    description
+      "An identityref that selects one of the YANG built-in types
+       defined in this module.";
+  }
+
+  // --- Augmentation 1: within the grouping, via its point of use ---
+  // --- Augmentation 1 : dans le grouping, via son point d'utilisation ---
+  sx:augment-structure "/sid:sid-file/sid:item" {
+    // This augmentation targets the expanded list inside the /sid:sid-file/sid:item,
+    // the /sid:sid-file is sx:structure, not grouping (even through it is defined inside grouping)
+    description
+      "Adds type information to each SID item.";
+    container type {
+      leaf base-type {
+        type yang-type;
+      }
+      leaf identityref {
+        type uint64;
+        description "SID of the referenced identity.";
+      }
+      container enumerate {
+        leaf enum-value {
+          type uint32;
+          description "Value of the enumeration item.";
+        }
+        leaf enum-name {
+          type string;
+          description "Name of the enumeration item.";
+        }
+      }
+      container bits {
+        leaf bit-position {
+          type uint32;
+          description "Position of the bit item.";
+        }
+        leaf bit-name {
+          type string;
+          description "Name of the bit item.";
+        }
+      }
+    }
+  }
+
+  // --- Augmentation 2: at the sid-file level, excluding items ---
+  // --- Augmentation 2 : au niveau sid-file, hors item ---
+  sx:augment-structure "/sid:sid-file" {
+    description
+      "Adds key-mapping at the sid-file level.";
+    container key-mapping {
+      description
+        "Maps each list SID to the ordered list of SIDs
+         of its key leaves.";
+      list entry {
+        key "list-sid";
+        leaf list-sid {
+          type sid:sid;
+          description "SID of the list node.";
+        }
+        leaf-list key-sids {
+          type sid:sid;
+          ordered-by user;
+          description "SIDs of the key leaves, in key order.";
+        }
+      }
+    }
+  }
+}
+<CODE ENDS>
+~~~~
+{: #Fig-sid-ext-yang title="YANG module extending the SID file"}
