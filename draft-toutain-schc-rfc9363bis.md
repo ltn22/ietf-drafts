@@ -976,6 +976,14 @@ list rule {
 ~~~
 {: #fig-management-in-compression-universal title="Widening compression-universal to Also Serve Management Rules (module revision 2026-09-22)"}
 
+The module also defines, "if-feature management", a "rule-status"
+leaf in "list rule", of type "status-type" (an identityref based on
+"status-base-type"). Two identities are defined: "status-active", the
+default, meaning that the Rule can be used, and "status-candidate",
+for a Rule created by management that cannot be used until the guard
+period has elapsed. A Rule without "rule-status" is considered active,
+so a Set of Rules written for RFC 9363 remains valid.
+
 For management, a management context is added: its values are
 common to all SCHC Rules in that management instance, rather than
 specific to any one Rule. Currently, the context contains a guard
@@ -1081,12 +1089,12 @@ with IANA, referencing this document instead of RFC 9363.
 {{fig-full-module}} shows the working copy of the "ietf-schc"
 module, kept up to date with every change discussed in this
 document, taken from the project's working file
-("ietf-schc@2026-09-22.yang"), validated with "pyang" (no
+("ietf-schc@2026-10-27.yang"), validated with "pyang" (no
 errors; see the pre-existing RFC 8407 style findings noted in its
 own revision history for remaining gaps).
 
 ~~~ yang
-<CODE BEGINS> file "ietf-schc@2026-09-22.yang"
+<CODE BEGINS> file "ietf-schc@2026-10-27.yang"
 module ietf-schc {
   yang-version 1.1;
   namespace "urn:ietf:params:xml:ns:yang:ietf-schc";
@@ -1144,6 +1152,16 @@ module ietf-schc {
      model format and the global identifiers used to describe some
      operations in fields.
      This data model applies to both compression and fragmentation.";
+
+  revision 2026-10-27 {
+    description
+      "Add 'rule-status' to 'list rule', gated by 'if-feature
+       management', with the 'status-base-type' identity and its
+       'status-active' and 'status-candidate' derived identities,
+       and the 'status-type' typedef. A Rule whose 'rule-status' is
+       'status-candidate' has been created by management and is not
+       usable until the guard period has elapsed.";
+  }
 
   revision 2026-09-22 {
     description
@@ -2859,6 +2877,32 @@ module ietf-schc {
      is available. */
   }
 
+  identity status-base-type {
+    description
+      "Base identity for the status of a Rule.";
+  }
+
+  identity status-active {
+    base status-base-type;
+    description
+      "The Rule is available and can be used.";
+  }
+
+  identity status-candidate {
+    base status-base-type;
+    description
+      "The Rule has been created by management and cannot be used
+       until the guard period has elapsed.";
+  }
+
+  typedef status-type {
+    type identityref {
+      base status-base-type;
+    }
+    description
+      "Defines the type to indicate the status of a Rule.";
+  }
+
   identity action-base-type {
     description
       "Action applied to a packet matching a compression Rule, once
@@ -3273,6 +3317,16 @@ module ietf-schc {
         mandatory true;
         description
           "Specify the Rule's nature.";
+      }
+      leaf rule-status {
+        if-feature "management";
+        type status-type;
+        default "status-active";
+        description
+          "Status of the Rule. A Rule with the value
+           'status-candidate' has been created by management and is
+           not available until the guard period has elapsed. A Rule
+           without this leaf is considered 'status-active'.";
       }
       choice nature {
         case fragmentation {
