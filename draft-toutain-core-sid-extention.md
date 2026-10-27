@@ -667,7 +667,6 @@ module ietf-sid-file-extension {
   }
 
   // --- Augmentation 1: within the grouping, via its point of use ---
-  // --- Augmentation 1 : dans le grouping, via son point d'utilisation ---
   sx:augment-structure "/sid:sid-file/sid:item" {
     // This augmentation targets the expanded list inside the /sid:sid-file/sid:item,
     // the /sid:sid-file is sx:structure, not grouping (even through it is defined inside grouping)
@@ -705,7 +704,6 @@ module ietf-sid-file-extension {
   }
 
   // --- Augmentation 2: at the sid-file level, excluding items ---
-  // --- Augmentation 2 : au niveau sid-file, hors item ---
   sx:augment-structure "/sid:sid-file" {
     description
       "Adds key-mapping at the sid-file level.";
