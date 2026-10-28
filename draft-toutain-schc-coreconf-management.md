@@ -828,7 +828,6 @@ There are different levels of error detection:
   of resources on a device.
 * SCHC errors: errors on the Data Model that cannot be detected at the YANG
   level. For example, the rule numbering does not correspond to a binary tree.
-* iPATCH on a rule element.
 
 # RPCs {#sec-rpcs}
 
