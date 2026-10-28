@@ -446,6 +446,55 @@ The naming convention is `cda-` followed by the CDA name.
 Currently no CDA requires arguments, but some CDAs may require one or several arguments in the future.
 They are viewed as a list of `target-value` type.
 
+## Convention for Action {#convention-for-action}
+
+When a compression Rule is selected, {{RFC8724}} compresses the packet and
+sends the resulting SCHC Packet to the lower layer. An Action, introduced by
+{{I-D.ietf-schc-icmpv6-compression}}, changes this behavior: the Rule is still
+selected through its entries, but the packet is handed over to the process
+named by the Action. The Action applies to the Rule as a whole, and not to a
+single entry.
+
+The naming convention is `action-` followed by the Action name. The type is
+`action-type`. The current YANG data model defines:
+
+* `action-forward`: the packet is sent to the lower layer, as specified in
+  {{RFC8724}}. This is the default value, so a Rule without an Action behaves
+  as in {{RFC8724}}.
+* `action-proxy-ping`: the packet is processed locally by a ping proxy, which
+  answers an ICMPv6 Echo Request {{RFC4443}} on behalf of the Device. Since
+  the Rule is only used for the selection, the CDAs of its entries are set to
+  `cda-not-sent`.
+
+### Action Arguments {#action-arguments}
+
+They are viewed as a list, built with a `tv-struct` (see {{target_value}}), and
+carried in the `action-value` list of the Rule. `action-forward` takes no
+argument. `action-proxy-ping` takes one argument, in seconds, giving the
+interval during which the Device is considered active: during this interval,
+the proxy answers the Echo Requests; after it, they are discarded.
+
+{{fig-action-rule}} shows a compression Rule for pinging a Device. The Action
+is shown above the entries, since it applies to the whole Rule.
+
+~~~ aasvg
++--------------------------+
+| Action: proxy-ping(300)  |
++----+----------------+----+----+----+----+---------+----------+
+| #  | Field          | FL | FP | DI | TV | MO      | CDA      |
++----+----------------+----+----+----+----+---------+----------+
+| IPv6 Headers description (omitted)                           |
++----+----------------+----+----+----+----+---------+----------+
+| 10 | icmpv6-type    | 8  | 1  | Dw | 80 | equal   | not-sent |
+| 11 | icmpv6-code    | 8  | 1  | Bi | 00 | equal   | not-sent |
+| 12 | icmpv6-        | 16 | 1  | Bi | -  | ignore  | not-sent |
+|    | identifier     |    |    |    |    |         |          |
+| 13 | icmpv6-        | 16 | 1  | Bi | 00 | MSB(24) | lsb      |
+|    | sequence       |    |    |    |    |         |          |
++----+----------------+----+----+----+----+---------+----------+
+~~~
+{: #fig-action-rule title="Example Compression Rule for a Ping to a Device"}
+
 ## Fragmentation Rule {#frag_types}
 
 Fragmentation is optional in the data model and depends on the presence of the `fragmentation` feature.
@@ -2359,6 +2408,9 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
   `mo-rev-rule-match`.
 * Convention for Compression Decompression Actions: new CDAs
   `cda-compress-sent` and `cda-rev-compress-sent`.
+* New section "Convention for Action": `action-forward` (default) and
+  `action-proxy-ping`, with arguments in `action-value`, and an example of a
+  ping Rule.
 * Editorial: the identifiers of the YANG data model are written in courier in
   the text.
 * References: RFC 7950 (YANG 1.1) becomes normative, since the deprecation

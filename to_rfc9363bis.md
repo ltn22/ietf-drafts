@@ -34,7 +34,8 @@ To add to the normative references:
 To add to the informative references: ~~RFC 4443 (ICMPv6)~~, RFC 7641
 (Observe), RFC 7959 (Block), RFC 8407 (YANG guidelines),
 ~~draft-ietf-core-oscore-key-update (KUDOS)~~, draft-barthel-lpwan-oam-schc
-(Action), draft-toutain-schc-sid-allocation,
+(Action: not needed, the Action is defined in
+draft-ietf-schc-icmpv6-compression), draft-toutain-schc-sid-allocation,
 draft-toutain-core-private-sid-translation and
 ~~draft-toutain-schc-coreconf-management (rule management)~~.
 
@@ -137,13 +138,13 @@ bis: Field Length Functions, Variable Length in Bits.
   in the Rule (bis: Alternative: Include IPv6 in Header Format), if the WG
   keeps it.
 
-### 5.7 New Section: Action
+### ~~5.7 New Section: Action~~
 
-bis: Action. New leaves "action" (identityref "action-type", default
+~~bis: Action. New leaves "action" (identityref "action-type", default
 "action-forward") and "action-value" (list based on the Target Value
 structure), at the level of the compression Rule, not of an entry. Identities
 "action-base-type", "action-forward", "action-proxy-ping", typedef
-"action-type". Include the ping Rule example.
+"action-type". Include the ping Rule example.~~
 
 ### 5.8 Fragmentation Rule (Section 4.10)
 
