@@ -1563,7 +1563,8 @@ module ietf-schc {
       type uint16;
 
       description 
-        "Sequential position of the entry in the user-ordered Rule list.";
+        "Sequential position of the entry in the user-ordered Rule list,
+         starting at 0.";
     }
 
     choice field-or-space {

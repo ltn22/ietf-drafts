@@ -1,14 +1,15 @@
 ---
 title: "A YANG Data Model for Static Context Header Compression (SCHC)"
-abbrev: "LPWAN SCHC YANG Data Model"
-docname: draft-ietf-lpwan-schc-yang-data-model-21
+abbrev: "SCHC YANG Data Model"
+docname: draft-toutain-schc-rfc9363bis-00
+obsoletes: 9363
 category: std
 ipr: trust200902
 submissiontype: IETF
 consensus: true
 v: 3
 area: "int"
-workgroup: "lpwan"
+workgroup: "schc"
 keyword:
  - Header Compression
  - Fragmentation
@@ -45,6 +46,7 @@ normative:
   RFC6242:
   RFC7136:
   RFC7252:
+  RFC7950:
   RFC8040:
   RFC8174:
   RFC8200:
@@ -54,36 +56,79 @@ normative:
   RFC8613:
   RFC8724:
   RFC8824:
+  RFC9441:
+  RFC9595:
+  I-D.ietf-schc-universal-option:
+  I-D.ietf-schc-icmpv6-compression:
+  I-D.ietf-schc-8824-update:
 informative:
   I-D.ietf-lpwan-architecture:
-  RFC7950:
+  I-D.toutain-schc-coreconf-management:
+  I-D.ietf-core-oscore-key-update:
+  RFC4443:
   RFC7967:
   RFC8376:
   RFC9011:
+  RFC9363:
 
 --- abstract
 
 This document describes a YANG data model for the Static Context Header Compression (SCHC)
 compression and fragmentation Rules.
 
-This document formalizes the description of the Rules for better interoperability between SCHC instances either
-to exchange a set of Rules or to modify the parameters of some Rules.
+This document formalizes the description of the Rules for better
+interoperability between SCHC instances either to exchange a set of Rules or to
+modify the parameters of some Rules.
+
+This document updates the SCHC data model defined in RFC 9363 to take into
+account the evolution of SCHC usages. It introduces a flexible way to describe
+protocol options, such as the CoAP options, and includes the identifiers needed
+for the compression of ICMPv6, the SCHC Compound ACK, and features for the
+management of the Rules.
 
 --- middle
 
 # Introduction {#Introduction}
 
-SCHC is a compression and fragmentation mechanism for constrained networks defined in {{RFC8724}}.
-It is based on a static context shared by two entities at the boundary of the constrained network.
-{{RFC8724}} provides an informal representation of the Rules used either for compression/decompression (C/D)
-or fragmentation/reassembly (F/R). The goal of this document is to formalize the description of the Rules to offer:
+SCHC is a compression and fragmentation mechanism for constrained networks
+defined in {{RFC8724}}. It is based on a static context shared by two entities
+at the boundary of the constrained network. {{RFC8724}} provides an informal
+representation of the Rules used either for compression/decompression (C/D) or
+fragmentation/reassembly (F/R), and {{RFC9363}} a YANG data model dedicated to
+LPWAN environments, where the Rules were most of the time installed directly in
+the SCHC end-points.
 
-* the same definition on both ends, even if the internal representation is different, and
-* an update of the other end to set up some specific values (e.g., IPv6 prefix, destination address, etc.).
+This document defines a YANG data model {{RFC7950}} to represent compression,
+fragmentation, and management Rules, which leads to common representation for
+values for all the Rules' elements. This data model is a revision of the 
+`ietf-schc` module of {{RFC9363}}, and not
+an augmentation such as the one defined in
+{{I-D.ietf-schc-universal-option}}, for two reasons:
 
-{{I-D.ietf-lpwan-architecture}} illustrates the exchange of Rules using the YANG data model.
+* The key of the compression Rule entries is changed. A single entry index
+  replaces the Field ID, the Field Position and the Direction Indicator, which
+  makes the key shorter and keeps the entries strictly ordered as the fields
+  in the header {{RFC8724}}. Since the key of a list cannot be changed in a
+  published module ({{Section 11 of RFC7950}}), a new list is defined and the
+  previous one is deprecated.
+* The module keeps its name and namespace, so the SID range already allocated
+  to `ietf-schc` by IANA can be used for this revision {{RFC9595}}.
 
-This document defines a YANG data model {{RFC7950}} to represent both compression and fragmentation Rules, which leads to common representation for values for all the Rules' elements.
+This document also directly integrates the augmentation proposed for the SCHC
+Compound ACK in {{RFC9441}}: the `ietf-schc-compound-ack` module is merged into
+the `ietf-schc` module.
+
+The goal of this document is to update the formal description of the Rules, to
+extend SCHC to new environments, and to offer:
+
+* the same definition on both ends, even if the internal representation is
+  different,
+* an update of the other end to set up some specific values (e.g., IPv6 prefix,
+  destination address, etc.), and
+* the management of the Rules by the SCHC instances themselves, which create
+  and delete Rules using CORECONF
+  {{I-D.toutain-schc-coreconf-management}}.
+
 
 # Requirements Language {#requirements-language}
 
@@ -96,6 +141,10 @@ when, and only when, they appear in all capitals, as shown here.
 
 This section defines the terminology and acronyms used in this document.
 It extends the terminology of {{RFC8376}}.
+
+Action:
+: Processing applied to a packet matching a compression Rule. By default, the
+  packet is compressed and forwarded.
 
 App:
 : Low-Power WAN (LPWAN) Application, as defined by {{RFC8376}}. An application sending/receiving packets to/from the Dev.
@@ -121,6 +170,11 @@ DI:
 Dw:
 : Downlink direction for compression/decompression, from SCHC C/D in the network to SCHC C/D in the Dev.
 
+Entry Index:
+: Sequential position of an entry in a compression Rule, starting at 0. It is
+  the key of the list of entries, and follows the order of the fields in the
+  header.
+
 FID:
 : Field Identifier or Field ID. This identifies the protocol and field a Field Descriptor applies to.
 
@@ -131,6 +185,11 @@ FP:
 : Field Position. When a field is expected to appear multiple times in a header, the Field Position specifies the occurrence this Field Descriptor applies to
   (for example, first Uri-Path option, second Uri-Path, etc. in a Constrained Application Protocol (CoAP) header), counting from 1. The value 0 is special and means "don't care" (see {{Section 7.2 of RFC8724}}).
 
+Guard Period:
+: Time during which a deleted Rule ID cannot be reused, so that a SCHC Packet
+  sent with the previous Rule cannot be decoded with a new one (see
+  {{I-D.toutain-schc-coreconf-management}}).
+
 IID:
 : Interface Identifier. See the IPv6 addressing architecture {{RFC7136}}.
 
@@ -139,27 +198,56 @@ L2 Word:
   In bit-oriented radio technologies, the L2 Word might be a single bit.
   The L2 Word size is assumed to be constant over time for each device.
 
+Management Rule:
+: Rule used to carry the management traffic between SCHC instances. Only the
+  management Rules can access the Set of Rules (see
+  {{I-D.toutain-schc-coreconf-management}}).
+
 MO:
 : Matching Operator. An operator used to match a value contained in a header field with a value contained in a Rule.
 
 RuleID:
 : Rule Identifier. An identifier for a Rule. SCHC C/D on both sides share the same RuleID for a given packet. A set of RuleIDs are used to support SCHC F/R functionality.
 
+Rule Status:
+: State of a Rule in the management protocol: valid, candidate, invalid, or
+  free (see {{I-D.toutain-schc-coreconf-management}}).
+
+Space ID:
+: Identifier of a protocol option space, such as the CoAP options.
+
 TV:
 : Target Value. A value contained in a Rule that will be matched with the value of a header field.
+
+Universal Option:
+: Option referenced in a compression Rule by its Space ID and its option
+  number, instead of a dedicated FID.
 
 Up:
 : Uplink direction for compression/decompression, from the Dev SCHC C/D to the network SCHC C/D.
 
 # SCHC Rules {#schc-rules}
 
-SCHC compression is generic; the main mechanism does not refer
-to a specific protocol. Any header field is abstracted through a Field Identifier (FID), a position (FP), a direction (DI), and a value that can be a numerical
-value or a string. {{RFC8724}} and {{RFC8824}} specify fields for IPv6 {{RFC8200}}, UDP {{RFC0768}}, and CoAP {{RFC7252}}, including options defined for no server response  {{RFC7967}} and Object Security for Constrained RESTful Environments (OSCORE) {{RFC8613}}. For the latter, {{RFC8824}} splits this field into subfields.
+SCHC compression is generic; the main mechanism does not refer to a specific
+protocol. Any header field is abstracted through a Field Identifier (FID), a
+position (FP), a direction (DI), and a value that can be a numerical value or a
+string.
 
-SCHC fragmentation requires a set of common parameters that are included in a Rule. These parameters are defined in {{RFC8724}}.
+{{RFC8724}}, {{RFC8824}}, and {{I-D.ietf-schc-universal-option}}
+specify fields for IPv6 {{RFC8200}}, UDP {{RFC0768}}, and CoAP {{RFC7252}},
+including options defined for no server response {{RFC7967}} and Object
+Security for Constrained RESTful Environments (OSCORE) {{RFC8613}}, with its
+Key Update (KUDOS) extension {{I-D.ietf-core-oscore-key-update}}. For the
+latter, {{RFC8824}} and {{I-D.ietf-schc-universal-option}} split this field
+into subfields.
+{{I-D.ietf-schc-icmpv6-compression}} specifies fields for ICMPv6 {{RFC4443}}.
 
-The YANG data model enables the compression and the fragmentation selection using the feature statement.
+SCHC fragmentation requires a set of common parameters that are included in a
+Rule. These parameters are defined in {{RFC8724}}, and extended in {{RFC9441}}
+for the SCHC Compound ACK.
+
+The YANG data model enables the compression, the fragmentation, and the
+management selection using the feature statement.
 
 ## Compression Rules {#comp_types}
 
@@ -192,7 +280,7 @@ describe a specific field in the header to be compressed.
 
 Identifiers used in the SCHC YANG data model are from the identityref statement to ensure global uniqueness and easy augmentation if needed.  The principle to define a new type based on a group of identityref is the following:
 
-* Define a main identity ending with the keyword base-type.
+* Define a main identity ending with the keyword `base-type`.
 * Derive all the identities used in the data model from this base type.
 * Create a typedef from this base type.
 
@@ -237,24 +325,72 @@ The current YANG data model includes field definitions found in {{RFC8724}} and 
 
 Using the YANG data model, each field MUST be identified through a global YANG identityref.
 
-A YANG Field ID for the protocol is always derived from the fid-base-type. Then, an identity
-for each protocol is specified using the naming convention fid-\<\<protocol name\>\>-base-type.
+A YANG Field ID for the protocol is always derived from the `fid-base-type`. Then, an identity
+for each protocol is specified using the naming convention `fid-<<protocol name>>-base-type`.
 All possible fields for this protocol MUST derive from the protocol identity. The naming
-convention is "fid-" followed by the protocol name and the field name. If a field has
+convention is `fid-` followed by the protocol name and the field name. If a field has
 to be divided into subfields, the field identity serves as a base.
 
-The full field-id definition is found in {{annexA}}. A type is defined for the IPv6 protocol, and each
+The full `field-id` definition is found in {{annexA}}. A type is defined for the IPv6 protocol, and each
 field is based on it. Note that the Diffserv bits derive from the Traffic Class identity.
+
+## Convention for Space Identifier {#convention-for-space-identifier}
+
+Some protocols, such as CoAP {{RFC7252}}, carry options identified by a number
+in an option space specific to the protocol. Instead of defining a Field ID for
+each option, a compression Rule entry can reference an option by a Space ID,
+which identifies the option space, and by the option number in this space,
+carried in the `universal-value` leaf {{I-D.ietf-schc-universal-option}}. New
+options can then be compressed without any update of the YANG data model.
+
+A Space ID is derived from the `space-id-base-type` identity. The naming
+convention is `space-id-` followed by the protocol name. The current YANG data
+model defines `space-id-coap` for the CoAP options; other protocols that define
+options can add their own identity the same way. The `space-id-type` typedef is
+defined from `space-id-base-type`, following the principle shown in
+{{Fig-identityref}}.
+
+`fid-base-type` and `space-id-base-type` derive from a common ancestor,
+`space-field-id-base-type`. A compression Rule entry contains either a
+`field-id` or a `space-id` with its `universal-value` (see
+{{compression-rule}}).
+
+This document deprecates some CoAP Field IDs originally defined in {{RFC9363}}
+(from `fid-coap-option-if-match` to `fid-coap-option-no-response`), which are
+replaced by Universal Options using `space-id-coap` and the option number.
 
 ## Convention for Field Length {#convention-for-field-length}
 
-The Field Length is either an integer giving the size of a field in bits or a specific function. {{RFC8724}} defines the
-"var" function, which allows variable-length fields (whose length is expressed in bytes), and {{RFC8824}} defines the "tkl" function for managing the CoAP
-Token Length field.
+The Field Length is either an integer giving the size of a field in bits or a
+specific function. {{RFC8724}} defines the "var" function, which allows
+variable-length fields (whose length is expressed in bytes), and {{RFC8824}}
+defines the "tkl" function for managing the CoAP Token Length field.
 
-The naming convention is "fl-" followed by the function name.
+{{I-D.ietf-schc-universal-option}} and {{I-D.ietf-schc-icmpv6-compression}}
+define the following functions:
 
-The Field Length function can be defined as an identityref, as described in {{annexA}}. Therefore, the type for the Field Length is a union between an integer giving the size of the length in bits and the identityref.
+* `fl-length-bytes` and `fl-length-bits`: the length of the field, in bytes or
+  in bits, is given by the value of another entry of the Rule. The entry index
+  of this entry is carried in the `field-length-value` leaf. `fl-token-length`
+  is equivalent to `fl-length-bytes` with the entry index of the CoAP TKL
+  field.
+* `fl-variable-bits`: as `fl-variable`, but the length prefix of the residue
+  is counted in bits instead of bytes, with the same encoding. It corresponds
+  to the "var_bit" function of {{I-D.ietf-schc-8824-update}}.
+* `fl-remaining`: the field extends to the end of the packet. Its residue is
+  sent without a length prefix, so this function is only used for the last
+  entry of a Rule, such as `fid-payload`.
+
+A Field Length function can take a numerical argument, carried in the
+`field-length-value` leaf of the Rule entry. For `fl-length-bytes` and
+`fl-length-bits`, this argument is the entry index of the entry giving the
+length. The other functions do not use it.
+
+The naming convention is `fl-` followed by the function name.
+
+The Field Length function can be defined as an identityref, as described in
+{{annexA}}. Therefore, the type for the Field Length is a union between an
+integer giving the size of the length in bits and the identityref.
 
 ## Convention for Field Position {#convention-for-field-position}
 
@@ -268,7 +404,7 @@ The Field Position is a positive integer. The type is uint8.
 
 The Direction Indicator is used to tell if a field appears in both directions (Bi) or only uplink (Up) or Downlink (Dw). The naming convention is "di" followed by the Direction Indicator name.
 
-The type is "di-type".
+The type is `di-type`.
 
 ## Convention for Target Value {#target_value}
 
@@ -281,31 +417,38 @@ If the header field contains text, the binary sequence uses the same encoding.
 
 ## Convention for Matching Operator {#convention-for-matching-operator}
 
-The Matching Operator (MO) is a function applied between a field value provided by the parsed header and the Target Value. {{RFC8724}} defines 4 MOs.
+The Matching Operator (MO) is a function applied between a field value provided
+by the parsed header and the Target Value. {{RFC8724}} defines 4 MOs.
+{{I-D.ietf-schc-icmpv6-compression}} defines `mo-rule-match` and
+`mo-rev-rule-match`, which check that the field matches another Rule, keeping
+or reversing the direction.
 
-The naming convention is "mo-" followed by the MO name.
+The naming convention is `mo-` followed by the MO name.
 
-The type is "mo-type".
+The type is `mo-type`.
 
 ### Matching Operator Arguments {#matching-operator-arguments}
 
-They are viewed as a list, built with a tv-struct (see {{target_value}}).
+They are viewed as a list, built with a `tv-struct` (see {{target_value}}).
 
 ## Convention for Compression Decompression Actions {#convention-for-compression-decompression-actions}
 
-The Compression Decompression Action (CDA) identifies the function to use for compression or decompression.
-{{RFC8724}} defines 7 CDAs.
+The Compression Decompression Action (CDA) identifies the function to use for
+compression or decompression. {{RFC8724}} defines 7 CDAs.
+{{I-D.ietf-schc-icmpv6-compression}} defines `cda-compress-sent` and
+`cda-rev-compress-sent`, which send the field compressed with the matched
+Rule, keeping or reversing the direction.
 
-The naming convention is "cda-" followed by the CDA name.
+The naming convention is `cda-` followed by the CDA name.
 
 ### Compression Decompression Action Arguments {#compression-decompression-action-arguments}
 
 Currently no CDA requires arguments, but some CDAs may require one or several arguments in the future.
-They are viewed as a list of target-value type.
+They are viewed as a list of `target-value` type.
 
 ## Fragmentation Rule {#frag_types}
 
-Fragmentation is optional in the data model and depends on the presence of the "fragmentation" feature.
+Fragmentation is optional in the data model and depends on the presence of the `fragmentation` feature.
 
 Most of the fragmentation parameters are listed in {{Appendix D of RFC8724}}.
 
@@ -320,8 +463,8 @@ The type is the same as the one used in compression entries, but bidirectional M
 * ACK Always: Each fragmentation window must be explicitly acknowledged before going to the next.
 * ACK on Error: A window is acknowledged only when the receiver detects some missing fragments.
 
-The type is "fragmentation-mode-type".
-The naming convention is "fragmentation-mode-" followed by the fragmentation mode name.
+The type is `fragmentation-mode-type`.
+The naming convention is `fragmentation-mode-` followed by the fragmentation mode name.
 
 ### Fragmentation Header {#fragmentation-header}
 
@@ -347,16 +490,16 @@ The last fragment of a datagram is sent with a Reassembly Check Sequence (RCS) f
 transmission errors and possible losses in the last window. {{RFC8724}} defines a single algorithm based on Ethernet
 CRC computation.
 
-The naming convention is "rcs-" followed by the algorithm name.
+The naming convention is `rcs-` followed by the algorithm name.
 
 For ACK-on-Error mode, the All-1 fragment may just contain the RCS or can include a tile. The following parameters define the
 behavior:
 
-* all-1-data-no: The last fragment contains no data, just the RCS.
-* all-1-data-yes: The last fragment includes a single tile and the RCS.
-* all-1-data-sender-choice: The last fragment may or may not contain a single tile. The receiver can detect if a tile is present.
+* `all-1-data-no`: The last fragment contains no data, just the RCS.
+* `all-1-data-yes`: The last fragment includes a single tile and the RCS.
+* `all-1-data-sender-choice`: The last fragment may or may not contain a single tile. The receiver can detect if a tile is present.
 
-The naming convention is "all-1-data-" followed by the behavior identifier.
+The naming convention is `all-1-data-` followed by the behavior identifier.
 
 ### Acknowledgment Behavior {#acknowledgment-behavior}
 
@@ -380,7 +523,7 @@ The acknowledgment fragment header goes in the opposite direction of data. {{RFC
 {: #Fig-frag-ack title="Acknowledgment Fragment Header for RFC 8724"}
 
 For ACK-on-Error, SCHC defines when an acknowledgment can be sent. This can be at any time defined by the Layer 2, at the end of a window (FCN all-0),
-or as a response to receiving the last fragment (FCN all-1). The naming convention is "ack-behavior" followed by the algorithm name.
+or as a response to receiving the last fragment (FCN all-1). The naming convention is `ack-behavior` followed by the algorithm name.
 
 ### Timer Values {#timer-values}
 
@@ -398,36 +541,36 @@ The state machine requires some common values to handle fragmentation correctly.
 
 The SCHC fragmentation protocol specifies the number of attempts before aborting through the parameter:
 
-* max-ack-requests  (cf. {{Section 8.2.2.4 of RFC8724}})
+* `max-ack-requests`  (cf. {{Section 8.2.2.4 of RFC8724}})
 
 ### Layer 2 Parameters {#layer-2-parameters}
 
 The data model includes two parameters needed for fragmentation:
 
-* l2-word-size: {{RFC8724}} base fragmentation, in bits, on a Layer 2 Word that can be of any length. The default value is 8 and corresponds
+* `l2-word-size`: {{RFC8724}} base fragmentation, in bits, on a Layer 2 Word that can be of any length. The default value is 8 and corresponds
   to the default value for the byte-aligned Layer 2. A value of 1 will indicate that there is no alignment and no need for padding.
-* maximum-packet-size: defines the maximum size of an uncompressed datagram. By default, the value is set to 1280 bytes.
+* `maximum-packet-size`: defines the maximum size of an uncompressed datagram. By default, the value is set to 1280 bytes.
 
 They are defined as unsigned integers; see {{annexA}}.
 
 # Rule Definition {#rule-definition}
 
 A Rule is identified by a unique Rule Identifier (RuleID) comprising both a RuleID value and a RuleID length.
-The YANG grouping rule-id-type defines the structure used to represent a RuleID. A length of 0 is allowed to represent an implicit Rule.
+The YANG grouping `rule-id-type` defines the structure used to represent a RuleID. A length of 0 is allowed to represent an implicit Rule.
 
 Three natures of Rules are defined in {{RFC8724}}:
 
 * Compression: A compression Rule is associated with the RuleID.
 * No-compression: This identifies the default Rule used to send a packet integrally when no-compression Rule was found (see {{Section 6 of RFC8724}}).
-* Fragmentation: Fragmentation parameters are associated with the RuleID. Fragmentation is optional, and the feature "fragmentation" should be set.
+* Fragmentation: Fragmentation parameters are associated with the RuleID. Fragmentation is optional, and the feature `fragmentation` should be set.
 
 The YANG data model respectively introduces these three identities :
 
-* nature-compression
-* nature-no-compression
-* nature-fragmentation
+* `nature-compression`
+* `nature-no-compression`
+* `nature-fragmentation`
 
-The naming convention is "nature-" followed by the nature identifier.
+The naming convention is `nature-` followed by the nature identifier.
 
 To access a specific Rule, the RuleID length and value are used as a key. The Rule is either
 a compression or a fragmentation Rule.
@@ -436,15 +579,15 @@ a compression or a fragmentation Rule.
 
 A compression Rule is composed of entries describing its processing. An entry  contains all the information defined in {{Fig-ctxt}} with the types defined above.
 
-The compression Rule described {{Fig-ctxt}} is defined by compression-content. It defines a list of
-compression-rule-entry, indexed by their Field ID, position, and direction. The compression-rule-entry
+The compression Rule described {{Fig-ctxt}} is defined by `compression-content`. It defines a list of
+`compression-rule-entry`, indexed by their Field ID, position, and direction. The `compression-rule-entry`
 element represents a line in {{Fig-ctxt}}. Their type reflects the identifier types defined in
 {{comp_types}}.
 
 Some checks are performed on the values:
 
 * When MO is ignore, no Target Value is needed; for other MOs, there MUST be a Target Value present.
-* When MSB MO is specified, the matching-operator-value must be present.
+* When MSB MO is specified, the `matching-operator-value` must be present.
 
 ## Fragmentation Rule {#fragmentation-rule}
 
@@ -2179,6 +2322,47 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
  </schc>
 ~~~
 {: #Fig-XML-rules title="XML Representation of the Rules"}
+
+# Changes from RFC 9363 {#changes}
+{:numbered="false"}
+
+* Header: the document obsoletes RFC 9363, in the `schc` working group.
+* Abstract: the document is presented as an update of the SCHC data model
+  (protocol options, ICMPv6, Compound ACK, Rule management).
+* Introduction: RFC 9363 is presented as a data model dedicated to LPWAN
+  environments, where the Rules were mostly installed directly in the SCHC
+  end-points. The goal becomes to update the formal description of the Rules
+  and to extend SCHC to new environments.
+* Introduction: the data model also represents the management Rules.
+* Introduction: third goal, the management of the Rules by the SCHC instances
+  themselves (creation and deletion with CORECONF).
+* Introduction: why this document is a revision and not an augmentation of
+  RFC 9363 (new key of the compression entries, reuse of the SID range).
+* Introduction: the `ietf-schc-compound-ack` module of RFC 9441 is merged into
+  `ietf-schc`.
+* Terminology: new terms Action, Entry Index, Guard Period, Management Rule,
+  Rule Status, Space ID, and Universal Option.
+* SCHC Rules: fields are also specified by the Universal Option and ICMPv6
+  compression documents.
+* SCHC Rules: the management can also be selected with a feature statement.
+* SCHC Rules: fields for the OSCORE Key Update (KUDOS), and fragmentation
+  parameters extended for the SCHC Compound ACK.
+* New section "Convention for Space Identifier": options referenced by a
+  Space ID and their option number (`space-id-base-type`, `space-id-coap`,
+  `space-id-type`, common ancestor `space-field-id-base-type`), and
+  deprecation of the per-option CoAP Field IDs of RFC 9363.
+* Convention for Field Length: new functions `fl-length-bytes`,
+  `fl-length-bits`, `fl-variable-bits`, and `fl-remaining`; a Field Length
+  function can take a numerical argument, carried in the `field-length-value`
+  leaf.
+* Convention for Matching Operator: new MOs `mo-rule-match` and
+  `mo-rev-rule-match`.
+* Convention for Compression Decompression Actions: new CDAs
+  `cda-compress-sent` and `cda-rev-compress-sent`.
+* Editorial: the identifiers of the YANG data model are written in courier in
+  the text.
+* References: RFC 7950 (YANG 1.1) becomes normative, since the deprecation
+  rules of its Section 11 are applied.
 
 # Acknowledgments {#acknowledgments}
 {:numbered="false"}

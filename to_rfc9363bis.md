@@ -10,57 +10,57 @@ reference for the YANG module is ietf-schc@2026-10-27
 For each change, "bis:" gives the section of draft-toutain-schc-rfc9363bis-old
 where the text and the YANG fragments can be taken from.
 
-## 1. Front Matter
+## ~~1. Front Matter~~
 
-* docname: draft-ietf-schc-rfc9363bis-00 (or the name chosen by the WG), with
-  "obsoletes: 9363". The workgroup becomes "schc" (lpwan is closed).
-* Abstract: add a sentence listing the extensions (universal entries, new
-  Field IDs and functions, Action, compound ACK, rule management).
-* Add a "Changes from RFC 9363" section (or appendix), summarizing the items
-  of this document.
+* ~~docname: draft-ietf-schc-rfc9363bis-00 (or the name chosen by the WG),
+  with "obsoletes: 9363". The workgroup becomes "schc" (lpwan is closed).~~
+* ~~Abstract: add a sentence listing the extensions (universal entries, new
+  Field IDs and functions, Action, compound ACK, rule management).~~
+* ~~Add a "Changes from RFC 9363" section (or appendix), summarizing the items
+  of this document.~~
 
 ## 2. References
 
 To add to the normative references:
 
-* RFC 7950 (YANG 1.1): already cited by RFC 9363 as informative; it becomes
-  normative, since the deprecation rules of Section 11 are applied.
-* RFC 9595 (YANG SID files), for the SID allocation.
-* RFC 9441 (SCHC Compound ACK), whose YANG module is merged.
-* draft-ietf-schc-universal-option, draft-ietf-schc-8824-update and
-  draft-ietf-schc-icmpv6-compression, which define the new Field IDs,
+* ~~RFC 7950 (YANG 1.1): already cited by RFC 9363 as informative; it becomes
+  normative, since the deprecation rules of Section 11 are applied.~~
+* ~~RFC 9595 (YANG SID files), for the SID allocation.~~
+* ~~RFC 9441 (SCHC Compound ACK), whose YANG module is merged.~~
+* ~~draft-ietf-schc-universal-option~~, ~~draft-ietf-schc-8824-update~~ and
+  ~~draft-ietf-schc-icmpv6-compression~~, which define the new Field IDs,
   functions, MOs and CDAs.
 
-To add to the informative references: RFC 4443 (ICMPv6), RFC 7641 (Observe),
-RFC 7959 (Block), RFC 8407 (YANG guidelines),
-draft-ietf-core-oscore-key-update (KUDOS), draft-barthel-lpwan-oam-schc
+To add to the informative references: ~~RFC 4443 (ICMPv6)~~, RFC 7641
+(Observe), RFC 7959 (Block), RFC 8407 (YANG guidelines),
+~~draft-ietf-core-oscore-key-update (KUDOS)~~, draft-barthel-lpwan-oam-schc
 (Action), draft-toutain-schc-sid-allocation,
 draft-toutain-core-private-sid-translation and
-draft-toutain-schc-coreconf-management (rule management).
+~~draft-toutain-schc-coreconf-management (rule management)~~.
 
 ## 3. Introduction (RFC 9363 Section 1)
 
-* Keep the two goals of RFC 9363, and add the third one: the management of the
-  Rules by the SCHC instances themselves (creation and deletion of Rules with
-  CORECONF, see draft-toutain-schc-coreconf-management).
-* Explain why the module is revised rather than augmented: the key of the
+* ~~Keep the two goals of RFC 9363, and add the third one: the management of
+  the Rules by the SCHC instances themselves (creation and deletion of Rules
+  with CORECONF, see draft-toutain-schc-coreconf-management).~~
+* ~~Explain why the module is revised rather than augmented: the key of the
   "entry" list cannot be changed in place (RFC 7950, Section 11), hence the
   new "entry-universal" structure and the deprecation of the old one (bis:
-  Universal Options).
+  Universal Options).~~
 
-## 4. Terminology (RFC 9363 Section 3)
+## ~~4. Terminology (RFC 9363 Section 3)~~
 
 Add:
 
-* Entry index: position of an entry in a compression Rule, key of the
-  "entry-universal" list.
-* Space ID: identifier of a protocol option space (e.g. the CoAP options).
-* Universal Option: option referenced by a Space ID and its option number,
-  instead of a dedicated Field ID.
-* Action: processing applied to a packet matching a compression Rule
-  ("forward" by default).
-* Management Rule, Guard period, Rule status: as defined in
-  draft-toutain-schc-coreconf-management.
+* ~~Entry index: position of an entry in a compression Rule, key of the
+  "entry-universal" list.~~
+* ~~Space ID: identifier of a protocol option space (e.g. the CoAP options).~~
+* ~~Universal Option: option referenced by a Space ID and its option number,
+  instead of a dedicated Field ID.~~
+* ~~Action: processing applied to a packet matching a compression Rule
+  ("forward" by default).~~
+* ~~Management Rule, Guard period, Rule status: as defined in
+  draft-toutain-schc-coreconf-management.~~
 
 ## 5. SCHC Rules (RFC 9363 Section 4)
 
@@ -74,17 +74,17 @@ Add:
 
 ### 5.2 Identifier Generation (Section 4.2)
 
-* No change of principle. Mention the new common ancestor
+* ~~No change of principle. Mention the new common ancestor
   "space-field-id-base-type" of "fid-base-type" and "space-id-base-type",
-  used by the "field-or-space" choice.
+  used by the "field-or-space" choice.~~ (done in the Space ID section)
 
 ### 5.3 Convention for Field Identifier (Section 4.3)
 
 Add the following subsections:
 
-* Universal Options and Space ID (bis: Universal Options, Space ID):
+* ~~Universal Options and Space ID (bis: Universal Options, Space ID):
   "space-id-base-type", "space-id-coap", "space-id-type"; an entry is either a
-  regular field ("field-id") or an option ("space-id" and "universal-value").
+  regular field ("field-id") or an option ("space-id" and "universal-value").~~
 * Deprecation of the twenty per-option CoAP Field IDs (bis: Deprecating the
   Per-Option CoAP FIDs): "fid-coap-option-if-match" to
   "fid-coap-option-no-response" are marked "status deprecated", with the table
@@ -109,28 +109,28 @@ Add the following subsections:
 
 bis: Field Length Functions, Variable Length in Bits.
 
-* "fl-length-bytes" and "fl-length-bits": the length is given by the value of
-  another entry, whose entry index is carried in the new "field-length-value"
-  leaf. "fl-token-length" is equivalent to "fl-length-bytes" with the index of
-  the TKL entry.
-* "fl-remaining": length of the rest of the packet, without length prefix,
-  for the last entry of a Rule.
-* "fl-variable-bits": as "fl-variable", with a length prefix counted in bits,
-  same escape structure (RFC 8724, Section 7.4.2).
+* ~~"fl-length-bytes" and "fl-length-bits": the length is given by the value
+  of another entry, whose entry index is carried in the new
+  "field-length-value" leaf. "fl-token-length" is equivalent to
+  "fl-length-bytes" with the index of the TKL entry.~~
+* ~~"fl-remaining": length of the rest of the packet, without length prefix,
+  for the last entry of a Rule.~~
+* ~~"fl-variable-bits": as "fl-variable", with a length prefix counted in
+  bits, same escape structure (RFC 8724, Section 7.4.2).~~
 * Add the OSCORE outer header example (bis: Example 1) and the non-byte-aligned
   MSB example (bis: Example, Non-Byte-Aligned MSB Residue).
 
 ### 5.5 Convention for Matching Operator (Section 4.8)
 
-* Add "mo-rule-match" and "mo-rev-rule-match" (bis: ICMPv6, New Matching
+* ~~Add "mo-rule-match" and "mo-rev-rule-match" (bis: ICMPv6, New Matching
   Operators): the Target Value matches another Rule, keeping or reversing the
-  direction.
+  direction.~~
 
 ### 5.6 Convention for Compression Decompression Actions (Section 4.9)
 
-* Add "cda-compress-sent" and "cda-rev-compress-sent" (bis: ICMPv6): the
+* ~~Add "cda-compress-sent" and "cda-rev-compress-sent" (bis: ICMPv6): the
   field is sent compressed with the matched Rule, or with its
-  direction-reversed counterpart.
+  direction-reversed counterpart.~~
 * Section 4.9.1 says that no CDA requires arguments: update it, since these
   new CDAs refer to a Rule.
 * Optionally, the ICMPv6 alternative with the invoking IPv6 header described
