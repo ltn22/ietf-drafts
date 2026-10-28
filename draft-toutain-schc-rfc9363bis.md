@@ -978,11 +978,24 @@ list rule {
 
 The module also defines, "if-feature management", a "rule-status"
 leaf in "list rule", of type "status-type" (an identityref based on
-"status-base-type"). Two identities are defined: "status-active", the
-default, meaning that the Rule can be used, and "status-candidate",
-for a Rule created by management that cannot be used until the guard
-period has elapsed. A Rule without "rule-status" is considered active,
-so a Set of Rules written for RFC 9363 remains valid.
+"status-base-type"). Four identities are defined, which are the
+statuses a Rule can have during management:
+
+* "status-valid", the default: the Rule belongs to the Set of Rules and
+  can be used.
+* "status-candidate": the Rule has been created by management, but the
+  other end has not validated it yet. It cannot be used.
+* "status-invalid": the Rule has been deleted by management and the
+  guard period is running. It cannot be used, no Rule with the same
+  RuleID can be created, and the SCHC packets carrying its RuleID are
+  dropped.
+* "status-free": the RuleID can be used to create a new Rule. When the
+  guard period of a deleted Rule has elapsed, the Rule is either kept
+  in the Set of Rules with this status, or removed from it; a RuleID
+  absent from the Set of Rules is also free.
+
+A Rule without "rule-status" is considered valid, so a Set of Rules
+written for RFC 9363 remains valid.
 
 For management, a management context is added: its values are
 common to all SCHC Rules in that management instance, rather than
@@ -1157,10 +1170,11 @@ module ietf-schc {
     description
       "Add 'rule-status' to 'list rule', gated by 'if-feature
        management', with the 'status-base-type' identity and its
-       'status-active' and 'status-candidate' derived identities,
-       and the 'status-type' typedef. A Rule whose 'rule-status' is
-       'status-candidate' has been created by management and is not
-       usable until the guard period has elapsed.";
+       'status-valid', 'status-candidate', 'status-invalid' and
+       'status-free' derived identities, and the 'status-type'
+       typedef. A Rule whose 'rule-status' is 'status-candidate'
+       has been created by management and is not usable until the
+       other end has validated it.";
   }
 
   revision 2026-09-22 {
@@ -2882,17 +2896,39 @@ module ietf-schc {
       "Base identity for the status of a Rule.";
   }
 
-  identity status-active {
+  identity status-valid {
     base status-base-type;
     description
-      "The Rule is available and can be used.";
+      "The Rule belongs to the Set of Rules and can be used.";
   }
 
   identity status-candidate {
     base status-base-type;
     description
-      "The Rule has been created by management and cannot be used
-       until the guard period has elapsed.";
+      "The Rule has been created by management and the other end
+       has not validated it yet. It cannot be used for compression,
+       decompression, fragmentation or reassembly, a SCHC packet
+       MUST NOT be generated with its RuleID, and a received
+       packet carrying its RuleID is dropped.";
+  }
+
+  identity status-invalid {
+    base status-base-type;
+    description
+      "The Rule has been deleted by management and the guard period
+       is running. It cannot be used, no Rule with the same RuleID
+       can be created, and the SCHC packets carrying its RuleID are
+       dropped. When the guard period has elapsed, the RuleID
+       becomes free.";
+  }
+
+  identity status-free {
+    base status-base-type;
+    description
+      "The RuleID can be used to create a new Rule. When the guard
+       period of a deleted Rule has elapsed, the Rule is either kept
+       in the Set of Rules with this status, or removed from it. A
+       RuleID absent from the Set of Rules is also free.";
   }
 
   typedef status-type {
@@ -3321,12 +3357,14 @@ module ietf-schc {
       leaf rule-status {
         if-feature "management";
         type status-type;
-        default "status-active";
+        default "status-valid";
         description
           "Status of the Rule. A Rule with the value
            'status-candidate' has been created by management and is
-           not available until the guard period has elapsed. A Rule
-           without this leaf is considered 'status-active'.";
+           not usable until the other end has validated it. A Rule
+           with the value 'status-invalid' has been deleted and
+           stays in this status during the guard period. A Rule
+           without this leaf is considered 'status-valid'.";
       }
       choice nature {
         case fragmentation {

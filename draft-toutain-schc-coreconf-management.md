@@ -58,9 +58,12 @@ normative:
   I-D.toutain-schc-rfc9363bis:
   RFC9254:
   I-D.ietf-core-comi:
+  RFC7252:
   I-D.ietf-lpwan-architecture:
   I-D.toutain-schc-sid-allocation:
 informative:
+  RFC8613:
+  RFC9175:
 
 entity:
   SELF: "[RFC-XXXX]"
@@ -80,18 +83,18 @@ no-compression) that form a Static Context, also called Set of Rules (SoR). The
 Context is called static because the Rules are not modified when a packet is
 compressed, decompressed, fragmented or reassembled.
 
-This document adds a fourth type of Rules, called management Rules (or M
-Rules), which have the power to add or delete Rules in the SoR. The
-nature of these Rules is defined in the SCHC YANG Data Model of
-{{I-D.toutain-schc-rfc9363bis}} (module revision 2026-10-27).
+This document adds a fourth type of Rules, called management Rules (or M Rules),
+which have the power to add or delete Rules in the SoR. The nature of these
+Rules is defined in the SCHC YANG Data Model of {{I-D.toutain-schc-rfc9363bis}}
+(module revision 2026-10-27).
 
 This document focuses on the usage of the CoAP Management Interface (CORECONF)
 to manage the SoR of a SCHC instance. CORECONF relies on {{RFC9254}}, which
 defines how data modeled in YANG are serialized in CBOR, and on
 {{I-D.ietf-core-comi}}, which defines the CoAP interface. The document also
-specifies the compression Rules dedicated to the management traffic itself.
-They make control and configuration exchanges more efficient and are distinct
-from the compression applied to regular application data.
+specifies the compression Rules dedicated to the management traffic itself. They
+make control and configuration exchanges more efficient and are distinct from
+the compression applied to regular application data.
 
 # Applicability statement
 
@@ -104,9 +107,9 @@ SCHC instance management allows the two endpoints to modify the common SoR, by:
 * Triggering Remote Procedural Calls (RPC) within the endpoints.
 
 Because of propagation delays and of the possible loss of management messages,
-both endpoints could temporarily hold different versions of a rule with the
-same RuleID. Therefore, an existing rule MUST NOT be modified. To change a rule,
-it MUST be deleted and a new rule MUST be created.
+both endpoints could temporarily hold different versions of a rule with the same
+RuleID. Therefore, an existing rule MUST NOT be modified. To change a rule, it
+MUST be deleted and a new rule MUST be created.
 
 A new type of traffic is defined called management traffic, which deals
 exclusively with message exchanges concerning context and rule management.
@@ -151,61 +154,93 @@ regarding the MTU, SCHC Fragmentation SHOULD be used instead of the Block
 option. As shown in figure {{Fig-SCHCManagement}} fragmentation can be common to
 Management rules and other rules.
 
-{::comment}WARNING (modify): this whole section describes the modification of a
-rule (candidate status, Guard period, Fig-Rule-mod). To remove or rewrite as a
-deletion followed by a creation.{:/comment}
 
-## Rule modification
+# Rule status
 
-SCHC imposes that both ends share exactly the same SoR, therefore, a new or
-modified rule cannot be used while it remains in candidate status until the
-other end has validated the modification. A candidate rule cannot be used,
-either in C/D or F/R. A SCHC PDU MUST NOT be generated with a candidate rule ID
-and received PDUs containing a candidate rule ID must be dropped.
+In {{RFC8724}} and its associated Data Model in {{RFC9363}}, rules are
+established when the SCHC instance is configured and are not modified
+afterwards. With management, rules can be created and deleted while the instance
+is running. A new state is therefore introduced for the rules, the
+"rule-status". It is used for the creation and the deletion of rules, to
+preserve the atomicity of the SoR: both ends move together from one version of
+the SoR to the next, and a rule is never used by one end while the other end
+does not have it.
 
-~~~ aasvg
-              A                         X  B
- X valid      |     modify Rule x    ------| X valid
- X candidate  |=====================/=====>| X candidate
-              |        /------------       |
-           ---|<======/====================|----
-            | |      /                     |  |
-     Guard  | |<-----                      |  | Guard
-            v |                            |  v
-           ---|                            |----   
- X valid      |                            | X valid
+A rule can have several statuses:
 
-~~~
-{: #Fig-Rule-mod title='Modifying a rule'}
+* `valid`: the rule belongs to the SoR and can be used for C/D and F/R.
+* `candidate`: the rule has been created, but the other end has not validated it
+  yet. A SCHC PDU MUST NOT be generated with a `candidate` rule, neither for C/D
+  nor for F/R. A `candidate` rule becomes `valid` either if the management
+  message is positively acknowledged or the initiator receives a SCHC PDU with
+  the newly created rule ID (the acknowledgment has been lost). This PDU is
+  accepted and decoded as for a `valid` rule, since only an end that has
+  validated the rule can have generated it.
+* `invalid`: the rule has been deleted and the Guard period is running. The rule
+  cannot be used, a rule with the same ID cannot be created, and the SCHC PDUs
+  carrying its rule ID are dropped. The Guard period of the end that deletes the
+  rule starts when it receives the acknowledgement; the Guard period of the
+  other end starts when it receives the deletion. When the Guard period is over,
+  the rule ID becomes `free`.
+* `free`: the rule ID can be used to create a new rule. When the Guard period of
+  a deleted rule is over, the rule is either marked `free` in the SoR, or
+  removed from the SoR. A rule ID absent from the SoR is also `free`. A new rule
+  ID MUST NOT be equal to, a prefix of, or prefixed by the rule ID of a `valid`,
+  `candidate` or `invalid` rule, since the SCHC packets could not be parsed
+  without ambiguity.
 
-
-{{Fig-Rule-mod}} illustrates a Rule modification. The left-hand side entity A
-wants to make rule x evolve. It send an acknowledged CoAP message to the other
-end. Host A change the status of the rule to "candidate", indicating that the
-rule can no longer be used for SCHC procedures. The receiving entity B,
-acknowledges the message and continues to maintain the "candidate" status for a
-Guard period. At the reception of the acknowledgement, A set also a Guard period
-before rule x becomes valid again.
-
-The Guard period is used to avoid SCHC message with a rule ID to appear at the
-other end after a rule modification. The Guard period appears only once during
-the rule management and is depends on the out-of-sequence messages expected
-between both ends.
-
-## Rule creation 
-
-Rule creation do not require a Guard period, and acknowledgement is RECOMMENDED.
-Figure {{Fig-Rule-creation}} gives an example, where the Acknowledgment is lost.
-Entity A sends a management message to create a new rule. Since its a new rule,
-the Guard period is not set and the new rule becomes immediately valid on B. The
-Acknowledgement does not reach A, so the rule stays in the candidate state, but
-the reception of a SCHC PDU carrying the RulE ID X, informs that the message has
-been correctly received by B. So X becomes valid in A.
 
 
 ~~~ aasvg
               A                            B
- X created    |       
+  X valid     |                            | X valid
+              |               /------------|  SCHC PDU (X)
+  X invalid   |==============/============>| X invalid
+              |<============/==============|---
+           ---|            /      Ack      | |
+            | |           /                | |
+      Guard | |          /                 | |  Guard
+            | |X========/                  | |
+            v | dropped                    | v
+           ---|                            |---
+  X free      |                            | X free
+              |        create Rule X       |
+  X candidate |===========================>| X valid
+              |                            | 
+  X valid     |<===========================|
+              |                   Ack      |
+~~~
+{: #Fig-Rule-del title='Deleting and re-creating a rule'}
+
+{{Fig-Rule-del}} illustrates the deletion and the re-creation of rule X. Entity
+A sends an acknowledged CoAP message to B to delete rule X. A marks the rule
+`invalid` when it sends the request, but its Guard period starts only when it
+receives the acknowledgement. B marks the rule `invalid` and starts its Guard
+period when it receives the request. Meanwhile, B has sent a SCHC PDU built with
+rule X before receiving the request. This PDU arrives at A during the Guard
+period and is dropped, since rule X is `invalid`. When the Guard period is over,
+rule X is `free` and can be created again, as shown by the last messages: A
+creates X as `candidate`, B creates it as `valid`, and A validates it when it
+receives the acknowledgement.
+
+The Guard period is used to avoid a SCHC PDU carrying a rule ID to appear at the
+other end after the rule has been deleted and, possibly, re-created with another
+content. Its duration is computed in {{sec-guard-computation}}.
+
+## Rule creation
+
+Rule creation does not require a Guard period, and acknowledgement is
+RECOMMENDED. Figure {{Fig-Rule-creation}} gives an example, where the
+Acknowledgment is lost. Entity A sends a management message to create a new
+rule. Since it is a new rule, the Guard period is not set and the new rule
+becomes immediately `valid` on B. The Acknowledgement does not reach A, so the
+rule stays in the `candidate` state, but the reception of a SCHC PDU carrying
+the Rule ID X informs that the message has been correctly received by B. This
+PDU is accepted and decoded, and X becomes `valid` in A.
+
+~~~ aasvg
+              A                            B
+ X free       |
  X candidate  |===========================>| X valid
               |         X==================|
               |                            |   
@@ -214,13 +249,222 @@ been correctly received by B. So X becomes valid in A.
               |                            | 
 
 ~~~
-{: #Fig-Rule-creation title='Modifying a rule'}
+{: #Fig-Rule-creation title='Creating a rule'}
 
-## Rule deletion
+### Idempotent creation {#sec-idempotent-creation}
 
-After the rule deletion, a Guard period is established. During that period, a
-rule with the same ID cannot be created, and SCHC PDU corrying the Rule ID are
-dropped.
+The acknowledgement of a creation may be lost without a SCHC PDU using the new
+rule being sent, or the CoAP exchange may be abandoned by A. Then A cannot know
+if B has created the rule, and the rule stays `candidate` on A. To recover, A
+repeats the creation. A creation is idempotent:
+
+* if the rule does not exist on B (`free`), B creates it as `valid` and
+  acknowledges it;
+* if a `valid` rule with the same rule ID and exactly the same content already
+  exists on B, B does not change anything and sends the same positive
+  acknowledgement as for the first request;
+* if a `valid` rule with the same rule ID but a different content exists on B,
+  or a rule whose rule ID overlaps (see `free`), B refuses the request with 4.09
+  Conflict. A discards its `candidate` rule (the rule becomes `free`), and may
+  retry later with another rule ID or content;
+* if the rule is `candidate` on B, the creations of both ends cross (see
+  {{sec-simultaneous-creation}});
+* if the rule ID is `invalid` on B, or overlaps an `invalid` rule ID (the Guard
+  period is running), B answers 5.03 Service Unavailable, with a Max-Age option
+  giving the remaining duration of its Guard period. A keeps the rule
+  `candidate` and repeats the creation when this delay has elapsed.
+
+A 4.09 Conflict must not be used during the Guard period: a copy of the creation
+sent in a previous CoAP exchange may still be in flight, and be accepted by B
+when its Guard period is over, while A would already have discarded the rule. An
+answer is taken into account only if the rule is still the `candidate` rule
+created by the request. Otherwise (the rule has been validated by a SCHC PDU,
+replaced or deleted in the meantime), it is ignored.
+
+The initiator keeps the rule `candidate` and repeats the creation, with an
+increasing delay, until it receives an answer. The creation stops as soon as the
+rule is no longer `candidate`: validated by a SCHC PDU, replaced (see
+{{sec-simultaneous-creation}}) or deleted. Repeating it afterwards could create
+the rule again on the other end after its deletion. To give up a `candidate`
+rule, A deletes it as any other rule (see {{sec-rule-deletion}}): the deletion
+is also idempotent, so B answers positively even if it never received the
+creation.
+
+The following example shows the creation of rule 9/4, where the acknowledgement
+is lost and the rule is not used by B before A repeats the request:
+
+~~~
+A -> B  REQ: iPATCH /c
+        (Content-Format: application/yang-identifiers+cbor-seq)
+        ["rule", 9, 4]: { "rule-nature": "nature-compression", ... }
+        A: rule 9/4 candidate
+        B: rule 9/4 free -> valid
+B -> A  RES: 2.04 Changed                                   (lost)
+        A: CoAP exchange abandoned, rule 9/4 stays candidate
+
+A -> B  REQ: iPATCH /c   (same content, new CoAP exchange)
+        ["rule", 9, 4]: { "rule-nature": "nature-compression", ... }
+        B: rule 9/4 already valid with the same content, no change
+B -> A  RES: 2.04 Changed
+        A: rule 9/4 candidate -> valid
+~~~
+{: #Fig-idempotent title='Idempotent creation after a lost acknowledgement'}
+
+If the second request had a different content, B would answer 4.09 Conflict and
+rule 9/4 would stay `valid` on B with its original content. A would discard its
+`candidate` rule (it becomes `free`), and would have to delete rule 9/4 before
+creating it with the new content.
+
+### Simultaneous creation {#sec-simultaneous-creation}
+
+Both ends can create rules. They could choose the same rule ID at the same time,
+or two rule IDs where one is the prefix of the other. To avoid it, the rule ID
+space SHOULD be shared between both ends:
+
+* the rule IDs of the rules created by the Core start with a bit set to 0;
+* the rule IDs of the rules created by the Device start with a bit set to 1.
+
+With this convention, two rule IDs created by different ends are never equal,
+nor the prefix of each other. It applies to the rules created with an iPATCH and
+with the "duplicate-rule" RPC. The rules provisioned before the start of the
+SCHC instance, such as the M Rules, are not concerned.
+
+If both creations still cross, for instance when this convention is not used,
+the Device has priority:
+
+* the Device, receiving a creation for a rule ID that is `candidate` on the
+  Device, or that overlaps with such a rule ID, refuses it with 4.09 Conflict;
+* the Core, receiving a creation for a rule ID that is `candidate` on the Core,
+  or that overlaps with such a rule ID, accepts it: the `candidate` rule of the
+  Core is discarded, and the received rule becomes `valid`. The Core stops its
+  own creation exchange, and the 4.09 Conflict sent by the Device for it is
+  ignored, since the rule is no longer the `candidate` rule created by the
+  request.
+
+The Device has priority because retrying with another rule ID is less costly for
+the Core than for a constrained Device.
+
+~~~ aasvg
+            Core                        Device
+ X candidate  |==========\      /==========| X candidate
+     (v1)     |           \    /           |     (v2)
+              | create     \  /    create  |
+              |   v1        \/       v2    |
+              |             /\             |
+              |            /  \            |
+              |           /    \           |
+ X valid      |<=========/      \=========>| rejects v1
+     (v2)     |                            |
+              |======== 2.04 Changed =====>| X valid (v2)
+              |                            |
+ ignored      |<===== 4.09 Conflict =======|
+~~~
+{: #Fig-simultaneous title='Crossing creations of the same rule ID'}
+
+{{Fig-simultaneous}} shows two crossing creations of rule X. The Core and the
+Device both create X as `candidate`, with different contents (v1 and v2). The
+Device refuses the creation of the Core with 4.09 Conflict. The Core accepts the
+creation of the Device: X becomes `valid` with the content v2 on the Core, which
+acknowledges it. The Device validates X when it receives the acknowledgement,
+and the 4.09 Conflict received by the Core is ignored. If the 4.09 Conflict
+reaches the Core before the creation of the Device, the `candidate` rule of the
+Core becomes `free` first, and the creation of the Device is then accepted as
+any creation.
+
+## Rule deletion {#sec-rule-deletion}
+
+When a rule is deleted, it becomes `invalid` on both ends for a Guard period
+(see {{Fig-Rule-del}}). During that period, a rule with the same ID cannot be
+created, and the SCHC PDUs carrying the Rule ID are dropped.
+
+The initiator marks the rule `invalid` when it sends the deletion, so that it
+does not generate any more PDU with this rule. Its Guard period starts when it
+receives the acknowledgement. If the deletion or its acknowledgement is lost and
+the CoAP exchange is abandoned, the rule stays `invalid` on the initiator
+without any running Guard period, and the initiator MUST repeat the deletion
+until it receives the acknowledgement. In the meantime, the SCHC PDUs sent by
+the other end with this rule ID are dropped.
+
+The deletion is idempotent: if the rule is already `invalid` or `free` on the
+receiving end, the request is acknowledged as the first one and does not restart
+the Guard period. A deletion received for a `candidate` rule makes it `invalid`,
+as for a `valid` rule, and the creation exchange in progress for this rule is
+stopped. The other end may have validated the rule before deleting it, or the
+deletion may be a late copy of an older one; in both cases, the rule can be
+created again after the Guard period.
+
+Management requests MUST be processed only once, as specified in {{RFC7252}},
+Section 4.5. The relaxation allowed by this section for idempotent requests does
+not apply: a creation or a deletion received again after the rule has been
+deleted and created again is not idempotent.
+
+## Guard period computation {#sec-guard-computation}
+
+The Guard period must be longer than the time a SCHC PDU built with the deleted
+rule can stay in the network. Let L be the maximum lifetime of a SCHC PDU: the
+maximum time between its emission by an end and its delivery (or discard) by the
+other end, including the queueing in the underlying network and, for a
+fragmentation rule, the time to deliver the last fragment. L depends on the
+network and is a configuration parameter. Consider a rule X deleted by A at time
+tA (A sends the request) and received by B at time tB, with tB >= tA:
+
+* A does not generate any PDU with X after tA. The last PDU of A reaches B at
+  tA+L at the latest, that is at most L after the beginning of the Guard period
+  of B (tB). B drops it. A Guard period of B longer than L is therefore enough.
+* B generates PDUs with X until tB. The last PDU of B reaches A at tB+L at the
+  latest. A receives the acknowledgement, sent after tB, at a time tA' >= tB,
+  and starts its Guard period at tA'. A Guard period of A longer than L is
+  therefore enough, since tA'+L >= tB+L.
+
+Both ends then use the same Guard period
+
+    G >= L
+
+plus a margin for the clock drift. For example, in a network where a SCHC PDU is
+delivered in less than 30 s, G = 30 s is enough, whatever the number of
+retransmissions of the CoAP deletion, since they happen before the Guard period
+of A starts.
+
+Starting the Guard period of A when it sends the request would not be
+sufficient: the request may be retransmitted for the CoAP transmission span (45
+seconds with the default parameters of {{RFC7252}}) before B receives it, and B
+keeps generating PDUs with X during all that time. A stale PDU would then arrive
+after the Guard period of A, possibly when X has been created again with another
+content: A in the `candidate` state would validate the new rule on this stale
+PDU, and would decode the following PDUs with the wrong rule.
+
+The Guard period of A ends at least as late as the one of B. A creation
+initiated by A therefore reaches a B whose Guard period is over. A creation
+initiated by B may arrive when the Guard period of A is still running: A answers
+5.03 Service Unavailable, and B retries when the Guard period of A is over (see
+{{sec-idempotent-creation}}).
+
+## Restart of an end {#sec-restart}
+
+Since management changes the SoR while the SCHC instance is running, the rules
+and their status SHOULD be stored in a stable memory, which survives a restart.
+Otherwise, an end that restarts loses the rules created or deleted by
+management, while the other end still uses them, and an `invalid` rule would be
+considered as `free` before the end of its Guard period. When the rules are
+kept, after a restart:
+
+* a `candidate` rule stays `candidate`, and the creation is repeated;
+* an `invalid` rule whose deletion has not been acknowledged stays `invalid`,
+  and the deletion is repeated;
+* an `invalid` rule whose Guard period had started begins a new, complete Guard
+  period, since the time spent during the restart is unknown. A longer Guard
+  period is always safe: a creation received during this period is answered with
+  5.03 Service Unavailable (see {{sec-idempotent-creation}}).
+
+The deduplication state of CoAP (see {{sec-rule-deletion}}) is usually lost
+during a restart, so that a copy of a management request sent before the restart
+could be processed again. If this state is not kept in a stable memory, the end
+MUST either check the freshness of the management requests with the Echo option
+{{RFC9175}}, or answer them with 5.03 Service Unavailable during
+EXCHANGE_LIFETIME ({{RFC7252}}) after the restart, so that the copies sent
+before the restart are no longer in flight. When OSCORE is used, the recovery of
+its replay window after a restart (Appendix B.1.2 of {{RFC8613}}) relies on the
+same Echo mechanism.
 
 # Management messages
 
@@ -248,14 +492,12 @@ rule modification. Check what remains useful for creation and deletion
 only.{:/comment}
 
 ### Rule Status and Guard Period
-To determine if a rule is considered available or not during the Guard period, a
-rule has a status which determines if it can be used. The "rule-status" leaf is
-defined only when the "management" feature is supported. Its type is an
-identityref based on "status-base-type", with two identities: "status-active"
-(the default), and "status-candidate". An available rule MUST associate the
-"rule-status" with the value "status-active". Conversely, during the Guard
-period, "rule-status" MUST be set to "status-candidate". A rule without
-"rule-status" is considered as "status-active".
+The status of a rule determines if it can be used (see "Rule status"). The
+"rule-status" leaf is defined only when the "management" feature is supported.
+Its type is an identityref based on "status-base-type", with four identities
+corresponding to the statuses `valid`, `candidate`, `invalid` and `free`:
+"status-valid" (the default), "status-candidate", "status-invalid" and
+"status-free". A rule without "rule-status" is considered as "status-valid".
 
 The duration of the Guard period is not a property of a single rule. It is
 carried by the "guard-period" container of the top-level "context" container, a
@@ -1141,7 +1383,7 @@ allowed (rule-id-value, rule-status updates).{:/comment}
   YANG REQ: iPATCH /c
   {
     ('/ietf-schc:schc/rule', 5, 3): {
-        'rule-status': 'ietf-schc:status-active', 
+        'rule-status': 'ietf-schc:status-valid', 
         'rule-id-value': 10, 
         'rule-id-length': 5, 
         'rule-nature': 'ietf-schc:nature-compression'
@@ -1214,8 +1456,9 @@ rpc duplicate-rule {
   keyed by "entry-index"; "action" and "action-value" are added; the "context"
   container is added.
 * "Rule Status and Guard Period": "rule-status" is now defined (identityref
-  "status-type", "status-active" and "status-candidate") under the "management"
-  feature, and the guard period duration is described by "context/guard-period".
+  "status-type", "status-valid", "status-candidate", "status-invalid" and
+  "status-free") under the "management" feature, and the guard period duration
+  is described by "context/guard-period".
 * "Management Rule Nature": the "nature-management" nature uses the
   "entry-universal" list only.
 * "Set of Rules Editing", FETCH and iPATCH examples: the keys "field-id",
@@ -1230,11 +1473,39 @@ rpc duplicate-rule {
   the SID file of the new module revision, have been removed and have to be
   regenerated.
 * Samar Sirohi added as co-author.
-* WARNING comments ("WARNING (modify)") mark the places that still describe
-  the modification of an existing rule, which is no longer allowed.
-* Introduction: now starts with the three Rule types of {{RFC8724}} and the
-  new management Rules, which {{I-D.toutain-schc-rfc9363bis}} introduces in the
-  YANG Data Model.
+* WARNING comments ("WARNING (modify)") mark the places that still describe the
+  modification of an existing rule, which is no longer allowed.
+* "Rule status": added the list of the statuses a rule can have (valid,
+  candidate, invalid and free).
+* "Rule status": the Guard period of the initiator of a deletion starts when it
+  receives the acknowledgement (not when it sends the request), and
+  {{Fig-Rule-del}} is updated. A PDU received with a `candidate` rule ID is now
+  accepted and validates the rule, instead of being dropped.
+* "Rule creation": added the idempotent creation ({{sec-idempotent-creation}})
+  with an example, the typos were fixed, and the title of {{Fig-Rule-creation}}
+  was corrected.
+* "Rule deletion": the deletion is idempotent, and is repeated until it is
+  acknowledged.
+* "Guard period computation" ({{sec-guard-computation}}) added. {{RFC7252}}
+  added to the references.
+* "Rule status": new "Simultaneous creation" subsection
+  ({{sec-simultaneous-creation}}): the rule ID space is shared between the Core
+  (first bit 0) and the Device (first bit 1), and the Device has priority when
+  two creations cross. A creation received during the Guard period is answered
+  with 5.03 Service Unavailable instead of 4.09 Conflict. A deletion received
+  for a `candidate` rule makes it `invalid`. A creation stops as soon as the
+  rule is no longer `candidate`, and an answer is only taken into account for
+  the `candidate` rule it was sent for. Management requests must be
+  deduplicated. A new rule ID must not overlap an existing one. The alignment of
+  the "X free" label in {{Fig-Rule-creation}} was fixed.
+* "Restart of an end" ({{sec-restart}}) added: the rules and their status should
+  be kept in a stable memory, the Guard period of an `invalid` rule restarts
+  after a restart, and the freshness of the management requests is checked when
+  the deduplication state is lost. {{RFC8613}} and {{RFC9175}} added to the
+  informative references.
+* Introduction: now starts with the three Rule types of {{RFC8724}} and the new
+  management Rules, which {{I-D.toutain-schc-rfc9363bis}} introduces in the YANG
+  Data Model.
 * Corentin Banier moved from the authors to the acknowledgments, and the SCHC
   Chair and Claude were added to the acknowledgments.
 * Reference to {{I-D.toutain-schc-rfc9363bis}} added, and to the
