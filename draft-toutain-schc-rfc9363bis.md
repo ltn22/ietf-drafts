@@ -367,19 +367,9 @@ variable-length fields (whose length is expressed in bytes), and {{RFC8824}}
 defines the "tkl" function for managing the CoAP Token Length field.
 
 {{I-D.ietf-schc-universal-option}} and {{I-D.ietf-schc-icmpv6-compression}}
-define the following functions:
-
-* `fl-length-bytes` and `fl-length-bits`: the length of the field, in bytes or
-  in bits, is given by the value of another entry of the Rule. The entry index
-  of this entry is carried in the `field-length-value` leaf. `fl-token-length`
-  is equivalent to `fl-length-bytes` with the entry index of the CoAP TKL
-  field.
-* `fl-variable-bits`: as `fl-variable`, but the length prefix of the residue
-  is counted in bits instead of bytes, with the same encoding. It corresponds
-  to the "var_bit" function of {{I-D.ietf-schc-8824-update}}.
-* `fl-remaining`: the field extends to the end of the packet. Its residue is
-  sent without a length prefix, so this function is only used for the last
-  entry of a Rule, such as `fid-payload`.
+define the `fl-length-bytes`, `fl-length-bits`, `fl-variable-bits`, and
+`fl-remaining` functions. `fl-variable-bits` corresponds to the "var_bit"
+function of {{I-D.ietf-schc-8824-update}}.
 
 A Field Length function can take a numerical argument, carried in the
 `field-length-value` leaf of the Rule entry. For `fl-length-bytes` and
@@ -420,8 +410,7 @@ If the header field contains text, the binary sequence uses the same encoding.
 The Matching Operator (MO) is a function applied between a field value provided
 by the parsed header and the Target Value. {{RFC8724}} defines 4 MOs.
 {{I-D.ietf-schc-icmpv6-compression}} defines `mo-rule-match` and
-`mo-rev-rule-match`, which check that the field matches another Rule, keeping
-or reversing the direction.
+`mo-rev-rule-match`.
 
 The naming convention is `mo-` followed by the MO name.
 
@@ -436,8 +425,7 @@ They are viewed as a list, built with a `tv-struct` (see {{target_value}}).
 The Compression Decompression Action (CDA) identifies the function to use for
 compression or decompression. {{RFC8724}} defines 7 CDAs.
 {{I-D.ietf-schc-icmpv6-compression}} defines `cda-compress-sent` and
-`cda-rev-compress-sent`, which send the field compressed with the matched
-Rule, keeping or reversing the direction.
+`cda-rev-compress-sent`.
 
 The naming convention is `cda-` followed by the CDA name.
 
@@ -456,44 +444,16 @@ named by the Action. The Action applies to the Rule as a whole, and not to a
 single entry.
 
 The naming convention is `action-` followed by the Action name. The type is
-`action-type`. The current YANG data model defines:
-
-* `action-forward`: the packet is sent to the lower layer, as specified in
-  {{RFC8724}}. This is the default value, so a Rule without an Action behaves
-  as in {{RFC8724}}.
-* `action-proxy-ping`: the packet is processed locally by a ping proxy, which
-  answers an ICMPv6 Echo Request {{RFC4443}} on behalf of the Device. Since
-  the Rule is only used for the selection, the CDAs of its entries are set to
-  `cda-not-sent`.
+`action-type`. The default Action is `action-forward`: the packet is sent to
+the lower layer, as specified in {{RFC8724}}, so a Rule without an Action
+behaves as in {{RFC8724}}. {{I-D.ietf-schc-icmpv6-compression}} defines
+`action-proxy-ping`.
 
 ### Action Arguments {#action-arguments}
 
 They are viewed as a list, built with a `tv-struct` (see {{target_value}}), and
 carried in the `action-value` list of the Rule. `action-forward` takes no
-argument. `action-proxy-ping` takes one argument, in seconds, giving the
-interval during which the Device is considered active: during this interval,
-the proxy answers the Echo Requests; after it, they are discarded.
-
-{{fig-action-rule}} shows a compression Rule for pinging a Device. The Action
-is shown above the entries, since it applies to the whole Rule.
-
-~~~ aasvg
-+--------------------------+
-| Action: proxy-ping(300)  |
-+----+----------------+----+----+----+----+---------+----------+
-| #  | Field          | FL | FP | DI | TV | MO      | CDA      |
-+----+----------------+----+----+----+----+---------+----------+
-| IPv6 Headers description (omitted)                           |
-+----+----------------+----+----+----+----+---------+----------+
-| 10 | icmpv6-type    | 8  | 1  | Dw | 80 | equal   | not-sent |
-| 11 | icmpv6-code    | 8  | 1  | Bi | 00 | equal   | not-sent |
-| 12 | icmpv6-        | 16 | 1  | Bi | -  | ignore  | not-sent |
-|    | identifier     |    |    |    |    |         |          |
-| 13 | icmpv6-        | 16 | 1  | Bi | 00 | MSB(24) | lsb      |
-|    | sequence       |    |    |    |    |         |          |
-+----+----------------+----+----+----+----+---------+----------+
-~~~
-{: #fig-action-rule title="Example Compression Rule for a Ping to a Device"}
+argument.
 
 ## Fragmentation Rule {#frag_types}
 
@@ -2408,9 +2368,11 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
   `mo-rev-rule-match`.
 * Convention for Compression Decompression Actions: new CDAs
   `cda-compress-sent` and `cda-rev-compress-sent`.
-* New section "Convention for Action": `action-forward` (default) and
-  `action-proxy-ping`, with arguments in `action-value`, and an example of a
-  ping Rule.
+* New section "Convention for Action": `action-forward` is the default
+  Action, and the arguments are carried in `action-value`.
+* Conventions for Field Length, Matching Operator, CDA, and Action: the new
+  identities are listed, and their behavior is described in the documents
+  that define them.
 * Editorial: the identifiers of the YANG data model are written in courier in
   the text.
 * References: RFC 7950 (YANG 1.1) becomes normative, since the deprecation

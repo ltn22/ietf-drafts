@@ -144,7 +144,9 @@ bis: Field Length Functions, Variable Length in Bits.
 "action-forward") and "action-value" (list based on the Target Value
 structure), at the level of the compression Rule, not of an entry. Identities
 "action-base-type", "action-forward", "action-proxy-ping", typedef
-"action-type". Include the ping Rule example.~~
+"action-type". Include the ping Rule example.~~ The identities stay in
+"ietf-schc", but their behavior and the example are described in
+draft-ietf-schc-icmpv6-compression.
 
 ### 5.8 Fragmentation Rule (Section 4.10)
 
