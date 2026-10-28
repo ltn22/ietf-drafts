@@ -275,9 +275,10 @@ repeats the creation. A creation is idempotent:
 * if the rule is `candidate` on B, the creations of both ends cross (see
   {{sec-simultaneous-creation}});
 * if the rule ID is `invalid` on B, or overlaps an `invalid` rule ID (the Guard
-  period is running), B answers 5.03 Service Unavailable, with a Max-Age option
-  giving the remaining duration of its Guard period. A keeps the rule
-  `candidate` and repeats the creation when this delay has elapsed.
+  period is running), B answers 5.03 Service Unavailable. A keeps the rule
+  `candidate` and repeats the creation later, with an increasing delay. The
+  response does not carry a Max-Age option, so that it can be compressed by the
+  management rules (see {{sec-mgmt-rules-tables}}).
 
 A 4.09 Conflict must not be used during the Guard period: a copy of the creation
 sent in a previous CoAP exchange may still be in flight, and be accepted by B
@@ -458,7 +459,7 @@ over. A creation initiated by B may arrive when the Guard period of A is still
 running: A answers 5.03 Service Unavailable, and B retries when the Guard period
 of A is over (see {{sec-idempotent-creation}}).
 
-## Restart of an end {#sec-restart}
+## Restart of a node {#sec-restart}
 
 Since management changes the SoR while the SCHC instance is running, the rules
 and their status SHOULD be stored in a stable memory, which survives a restart.
@@ -622,10 +623,10 @@ module: ietf-schc
   |     +--rw ticks-numbers?    uint16
   +--rw schc
      +--rw rule* [rule-id-value rule-id-length]
-        +--rw rule-id-value                          uint32
-        +--rw rule-id-length                         uint8
-        +--rw rule-nature                            nature-type
-        +--rw rule-status?                           status-type {management}?
+        +--rw rule-id-value     uint32
+        +--rw rule-id-length    uint8
+        +--rw rule-nature       nature-type
+        +--rw rule-status?      status-type {management}?
         +--rw (nature)?
            +--:(fragmentation) {fragmentation}?
            | ...
@@ -1275,12 +1276,6 @@ carrying a payload). The CoAP codes are given as numbers: 2 (POST), 5 (FETCH), 7
 (4.01 Unauthorized), 131 (4.03 Forbidden), 132 (4.04 Not Found), 137 (4.09
 Conflict), 160 (5.00 Internal Server Error) and 163 (5.03 Service Unavailable).
 
-{::comment}WARNING (5.03): a 5.03 Service Unavailable response carries a
-Max-Age option (see the idempotent creation), which is not described in M2 and
-M4. Either the Max-Age option is omitted when M2 or M4 is used (the client then
-waits for the default 60 seconds), or another management rule is
-needed.{:/comment}
-
 ~~~
  +---------------------------------------------------------------------+
  |RuleID M1                                                            |
@@ -1455,9 +1450,9 @@ end, or running.
 * T2, `free` to `valid`: a creation is received. The end answers 2.04 Changed.
 * T3, `candidate` to `free`: 4.09 Conflict is received for the creation.
 * T4, `candidate` to `candidate`: 5.03 Service Unavailable is received, the CoAP
-  exchange is abandoned, or the end restarts. The creation is repeated, after
-  the Max-Age delay for a 5.03. A Device that receives a creation for this rule
-  ID answers 4.09 Conflict.
+  exchange is abandoned, or the end restarts. The creation is repeated later,
+  with an increasing delay. A Device that receives a creation for this rule ID
+  answers 4.09 Conflict.
 * T5, `candidate` to `valid`: 2.04 Changed is received for the creation, a SCHC
   PDU carrying the rule ID is received and decoded, or, on the Core only, a
   creation of the same rule ID is received from the Device. In the last case,
@@ -1481,8 +1476,7 @@ end, or running.
   * a deletion is received: the end answers 2.04 Changed, and the Guard period
     restarts, unless it is waiting for the acknowledgement of the deletion sent
     by the end;
-  * a creation is received: the end answers 5.03 Service Unavailable, with the
-    remaining duration of the Guard period in Max-Age;
+  * a creation is received: the end answers 5.03 Service Unavailable;
   * the end restarts while the Guard period is running: a new, complete Guard
     period starts.
 
@@ -1592,7 +1586,9 @@ The following events do not change the status:
   responses without payload. The description of M1 to M4 is clarified.
 * Acknowledgments: Claude was used to validate the protocol used to modify the
   SoR.
-* "Restart of an end" ({{sec-restart}}) added: the rules and their status should
+* The 5.03 Service Unavailable responses carry no Max-Age option, so that they
+  can be compressed by the management rules M2 and M4.
+* "Restart of a node" ({{sec-restart}}) added: the rules and their status should
   be kept in a stable memory, the Guard period of an `invalid` rule restarts
   after a restart, and the freshness of the management requests is checked when
   the deduplication state is lost. {{RFC8613}} and {{RFC9175}} added to the
