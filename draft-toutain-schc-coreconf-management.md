@@ -59,10 +59,12 @@ normative:
   RFC9254:
   I-D.ietf-core-comi:
   RFC7252:
+  RFC0768:
+  RFC8200:
+  RFC8613:
   I-D.ietf-lpwan-architecture:
   I-D.toutain-schc-sid-allocation:
 informative:
-  RFC8613:
   RFC9175:
 
 entity:
@@ -83,10 +85,10 @@ no-compression) that form a Static Context, also called Set of Rules (SoR). The
 Context is called static because the Rules are not modified when a packet is
 compressed, decompressed, fragmented or reassembled.
 
-This document adds a fourth type of Rules, called management Rules (or M Rules),
-which have the power to add or delete Rules in the SoR. The nature of these
-Rules is defined in the SCHC YANG Data Model of {{I-D.toutain-schc-rfc9363bis}}
-(module revision 2026-10-27).
+This document adds a fourth type of Rules, called management rules, which have
+the power to add or delete Rules in the SoR. The nature of these Rules is
+defined in the SCHC YANG Data Model of {{I-D.toutain-schc-rfc9363bis}} (module
+revision 2026-10-27).
 
 This document focuses on the usage of the CoAP Management Interface (CORECONF)
 to manage the SoR of a SCHC instance. CORECONF relies on {{RFC9254}}, which
@@ -118,17 +120,17 @@ The rule management uses the CORECONF network management interface
 {{I-D.ietf-core-comi}}, which is based on CoAP. In this context, management
 traffic refers to the CORECONF messages exchanged between the endpoints to
 configure or modify rule sets. The management traffic is transported as
-SCHC-compressed packets, tagged with specific Rule IDs. These rules are
-identified as Management Rules (or M Rules) in Figure {{Fig-SCHCManagement}}. M
-Rules can be either Compression Rules or No-Compression Rules. Only M Rules are
+SCHC-compressed packets, tagged with specific Rule IDs. These rules are the
+management rules (M in Figure {{Fig-SCHCManagement}}). Management rules can be
+either Compression Rules or No-Compression Rules. Only management rules are
 permitted to modify the SoR.
 
 The management traffic uses its own IPv6 stack, distinct from regular
 application traffic. See Section {{sec-protocols}} for more details.
 
-SCHC Packets using M Rules MUST be encrypted either by the underlying layer (for
-instance in a QUIC stream dedicated to management inside a QUIC connection) or
-directly using OSCORE or DTLS.
+SCHC Packets using management rules MUST be encrypted either by the underlying
+layer (for instance in a QUIC stream dedicated to management inside a QUIC
+connection) or directly using OSCORE or DTLS.
 
 ~~~~ aasvg
 +-----------------+                 +-----------------+
@@ -146,7 +148,7 @@ directly using OSCORE or DTLS.
 ~~~~
 {: #Fig-SCHCManagement title='Inband Management'}
 
-## CoAP Profile
+## CoAP Profile {#sec-coap-profile}
 
 Management requests MUST be protected against packet loss. It is RECOMMENDED to
 use CONfirmable requests and no Token. If the management request is too large
@@ -155,7 +157,7 @@ option. As shown in figure {{Fig-SCHCManagement}} fragmentation can be common to
 Management rules and other rules.
 
 
-# Rule status
+# Rule status {#sec-rule-status}
 
 In {{RFC8724}} and its associated Data Model in {{RFC9363}}, rules are
 established when the SCHC instance is configured and are not modified
@@ -164,9 +166,12 @@ is running. A new state is therefore introduced for the rules, the
 "rule-status". It is used for the creation and the deletion of rules, to
 preserve the atomicity of the SoR: both ends move together from one version of
 the SoR to the next, and a rule is never used by one end while the other end
-does not have it.
+does not have it. The status is local to each node: each node sets the status of
+its rules according to its own protocol state, so that both nodes can have
+different statuses for the same rule during a creation or a deletion.
 
-A rule can have several statuses:
+A rule can have several statuses (the state machine is summarized in
+{{sec-fsm}}):
 
 * `valid`: the rule belongs to the SoR and can be used for C/D and F/R.
 * `candidate`: the rule has been created, but the other end has not validated it
@@ -295,7 +300,7 @@ is lost and the rule is not used by B before A repeats the request:
 
 ~~~
 A -> B  REQ: iPATCH /c
-        (Content-Format: application/yang-identifiers+cbor-seq)
+        (Content-Format: application/yang-instances+cbor-seq)
         ["rule", 9, 4]: { "rule-nature": "nature-compression", ... }
         A: rule 9/4 candidate
         B: rule 9/4 free -> valid
@@ -327,7 +332,7 @@ space SHOULD be shared between both ends:
 With this convention, two rule IDs created by different ends are never equal,
 nor the prefix of each other. It applies to the rules created with an iPATCH and
 with the "duplicate-rule" RPC. The rules provisioned before the start of the
-SCHC instance, such as the M Rules, are not concerned.
+SCHC instance, such as the management rules, are not concerned.
 
 If both creations still cross, for instance when this convention is not used,
 the Device has priority:
@@ -386,12 +391,16 @@ until it receives the acknowledgement. In the meantime, the SCHC PDUs sent by
 the other end with this rule ID are dropped.
 
 The deletion is idempotent: if the rule is already `invalid` or `free` on the
-receiving end, the request is acknowledged as the first one and does not restart
-the Guard period. A deletion received for a `candidate` rule makes it `invalid`,
-as for a `valid` rule, and the creation exchange in progress for this rule is
-stopped. The other end may have validated the rule before deleting it, or the
-deletion may be a late copy of an older one; in both cases, the rule can be
-created again after the Guard period.
+receiving end, the request is acknowledged as the first one. It nevertheless
+(re)starts the Guard period of the rule, which becomes `invalid` again if it was
+`free`, unless the receiving end is itself waiting for the acknowledgement of
+its own deletion of this rule. A Guard period that turns out to be useless only
+delays the reuse of the rule ID, while a missing one can lead both ends to
+disagree on the SoR (see {{sec-guard-computation}}). A deletion received for a
+`candidate` rule makes it `invalid`, as for a `valid` rule, and the creation
+exchange in progress for this rule is stopped. The other end may have validated
+the rule before deleting it, or the deletion may be a late copy of an older one;
+in both cases, the rule can be created again after the Guard period.
 
 Management requests MUST be processed only once, as specified in {{RFC7252}},
 Section 4.5. The relaxation allowed by this section for idempotent requests does
@@ -433,11 +442,21 @@ after the Guard period of A, possibly when X has been created again with another
 content: A in the `candidate` state would validate the new rule on this stale
 PDU, and would decode the following PDUs with the wrong rule.
 
-The Guard period of A ends at least as late as the one of B. A creation
-initiated by A therefore reaches a B whose Guard period is over. A creation
-initiated by B may arrive when the Guard period of A is still running: A answers
-5.03 Service Unavailable, and B retries when the Guard period of A is over (see
-{{sec-idempotent-creation}}).
+When both ends delete the same rule at the same time, each end keeps sending its
+deletion request until it is acknowledged, possibly after the Guard period of
+the other end has started. These requests are not covered by the computation
+above. A late copy could reach an end that has already created the rule again,
+and make it `invalid` there, while the creation has already reached the other
+end. This is why every received deletion restarts the Guard period (see
+{{sec-rule-deletion}}): the copies of an earlier exchange are then sent before
+the restart, and the copies of the acknowledged exchange are removed by the
+deduplication.
+
+Without crossing deletions, the Guard period of A ends at least as late as the
+one of B. A creation initiated by A therefore reaches a B whose Guard period is
+over. A creation initiated by B may arrive when the Guard period of A is still
+running: A answers 5.03 Service Unavailable, and B retries when the Guard period
+of A is over (see {{sec-idempotent-creation}}).
 
 ## Restart of an end {#sec-restart}
 
@@ -468,28 +487,105 @@ same Echo mechanism.
 
 # Management messages
 
+## Management Protocol Stack {#sec-mgmt-stack}
+
+The management messages are carried by a protocol stack dedicated to management,
+independent of the stack used by the application traffic ({{Fig-mgmt-stack}}).
+No other traffic uses this stack.
+
+~~~ aasvg
+     Device (fe80::1)                     Core/App (fe80::2)
+  +-------------------+                 +-------------------+
+  |     CORECONF      |                 |     CORECONF      |
+  +-------------------+                 +-------------------+
+  |   CoAP (inner)    |                 |   CoAP (inner)    |
+  |  - - OSCORE - -   |    optional     |  - - OSCORE - -   |
+  |   CoAP (outer)    |                 |   CoAP (outer)    |
+  +-------------------+                 +-------------------+
+  |        UDP        |                 |        UDP        |
+  +-------------------+                 +-------------------+
+  |       IPv6        |                 |       IPv6        |
+  +-------------------+                 +-------------------+
+  |       SCHC        |                 |       SCHC        |
+  | management rules  |                 | management rules  |
+  +-------------------+                 +-------------------+
+  |        L2         |<--------------->|        L2         |
+  +-------------------+                 +-------------------+
+~~~
+{: #Fig-mgmt-stack title='Protocol stack of the management messages'}
+
+* IPv6 {{RFC8200}}: the management traffic does not use the IPv6 stack of the
+  application. Each node of the SCHC instance includes a second IPv6 stack, used
+  only for management. Only two link-local addresses are allowed on this stack:
+  fe80::1 for the Device and fe80::2 for the Core, on the application side (see
+  {{sec-protocols}}). These IPv6 packets are only exchanged between the two
+  nodes of the SCHC instance and are never forwarded outside of it. They are
+  compressed with the management rules and, when they are larger than the MTU of
+  the underlying network, fragmented with SCHC fragmentation.
+* UDP {{RFC0768}}: the CoAP server uses port 5683 and the CoAP client port 3865
+  (see {{sec-protocols}}).
+* CoAP {{RFC7252}}: both nodes are CoAP clients and servers, so that each node
+  can initiate a management operation. The requests are Confirmable, and their
+  deduplication is required by the rule status procedures (see
+  {{sec-coap-profile}} and {{sec-rule-deletion}}). A node MUST NOT send a
+  management request on a rule before it has received the response to its
+  previous request on the same rule ID, or on an overlapping rule ID, or
+  abandoned this request. The rule status procedures rely on this order.
+  Requests on different rules can be sent without waiting for each other, within
+  the limit of NSTART ({{RFC7252}}, Section 4.7), the maximum number of requests
+  sent to a node and still waiting for a response. Its default value is 1, and
+  it can be increased by configuration when the underlying network allows it.
+* OSCORE {{RFC8613}}: when the underlying network does not protect the
+  management traffic, the CoAP messages MAY be protected with OSCORE between
+  both nodes. OSCORE encrypts the inner CoAP message (code, most options and
+  payload) and carries it in an outer CoAP message. The outer code is POST for
+  the requests and 2.04 Changed for the responses, and the outer message
+  contains an OSCORE option. The management rules then compress the outer CoAP
+  header. The replay protection of OSCORE complements the CoAP deduplication,
+  including after a restart (see {{sec-restart}}).
+* CORECONF {{I-D.ietf-core-comi}}: the SoR is a datastore structured by the SCHC
+  YANG Data Model ({{I-D.toutain-schc-rfc9363bis}}), whose data nodes are
+  identified by SIDs and encoded in CBOR {{RFC9254}}. The rules are read with
+  FETCH, iPATCH, and the operations on the SoR are RPCs invoked with POST (see
+  {{sec-rpcs}}).
+
+
 ## YANG Data Model
 CORECONF proposes an interface to manage data structured with a YANG Data Model.
-{::comment}WARNING (modify): 'iPATCH to create, modify or delete a rule': remove
-'modify'.{:/comment}
 
 {{RFC9363}} defines a YANG Data Model for SCHC Rules, updated by
 {{I-D.toutain-schc-rfc9363bis}} (module revision 2026-10-27). This document uses
 the updated model. SCHC Instance Management MUST use FETCH to read a rule and
-iPATCH to create, modify or delete a rule. The updated YANG Data Model brings
-the following elements used for management:
+iPATCH to create or delete a rule, and RPCs to generate specific rules depending
+on RPC parameters.
 
-### Management Rule Nature
-M Rules have to be marked in a way that allows quickly identifying which rules
-in a SoR are responsible for management. Therefore, a "nature-management" Rule
-nature is defined, and the "management" feature enables it. A management Rule
-uses the compression Rule structure, but only the "entry-universal" list
-supports management Rules: the deprecated "entry" list does not. Compression
-needs to be available and activated to do management.
+Management rules have to be marked in a way that allows quickly identifying
+which rules in a SoR are responsible for management. Therefore, a
+"nature-management" Rule nature is defined, and the "management" feature enables
+it. A management Rule uses the compression Rule structure, but only the
+"entry-universal" list supports management Rules: the deprecated "entry" list
+does not. Compression needs to be available and activated to do management.
 
-{::comment}WARNING (modify): rule-status and Guard period were introduced for
-rule modification. Check what remains useful for creation and deletion
-only.{:/comment}
+The technical choices of the management protocol stack ({{sec-mgmt-stack}})
+allow the management rules to compress the management traffic very efficiently
+(see {{sec-protocols}}), since most of the header fields are known in advance:
+
+* the IPv6 addresses are fixed (fe80::1 for the Device and fe80::2 for the
+  Core), as are the other fields of the IPv6 header (version, traffic class,
+  flow label, next header and hop limit). They are not sent, and the payload
+  length is computed;
+* the UDP ports are fixed (5683 for the CoAP server and 3865 for the CoAP
+  client). They are not sent, and the UDP length and checksum are computed;
+* the CoAP requests only use three methods (FETCH, iPATCH and POST), so that
+  their code is sent as a short index with a mapping. The type (Confirmable for
+  the requests, Acknowledgement for the responses), the Token length (no Token),
+  and the Uri-Path and Content-Format options have fixed values and are not
+  sent. Only the least significant bits of the Message ID are sent;
+* when OSCORE is used, the outer code is always POST for the requests and 2.04
+  Changed for the responses, and is not sent either.
+
+A management message is therefore reduced to the Rule ID, a few bits of CoAP
+header and the CORECONF payload.
 
 ### Rule Status and Guard Period
 The status of a rule determines if it can be used (see "Rule status"). The
@@ -498,6 +594,13 @@ Its type is an identityref based on "status-base-type", with four identities
 corresponding to the statuses `valid`, `candidate`, `invalid` and `free`:
 "status-valid" (the default), "status-candidate", "status-invalid" and
 "status-free". A rule without "rule-status" is considered as "status-valid".
+
+The "rule-status" leaf is managed locally by each node, which rewrites it
+according to the protocol state of the rule (see {{sec-rule-status}} and
+{{sec-fsm}}). It is never set by the other node: a value received in the
+creation of a rule is ignored, and a request whose target is "rule-status" is
+refused as any modification of a rule (see {{sec-ipatch}}). It can be read with
+FETCH, for instance to check the state of the rules after a restart.
 
 The duration of the Guard period is not a property of a single rule. It is
 carried by the "guard-period" container of the top-level "context" container, a
@@ -525,104 +628,21 @@ module: ietf-schc
         +--rw rule-status?                           status-type {management}?
         +--rw (nature)?
            +--:(fragmentation) {fragmentation}?
-           |  +--rw fragmentation-mode          schc:fragmentation-mode-type
-           |  +--rw l2-word-size?                    uint8
-           |  +--rw direction                        schc:di-type
-           |  +--rw dtag-size?                       uint8
-           |  +--rw w-size?                          uint8
-           |  +--rw fcn-size                         uint8
-           |  +--rw rcs-algorithm?                   rcs-algorithm-type
-           |  +--rw maximum-packet-size?             uint16
-           |  +--rw window-size?                     uint16
-           |  +--rw max-interleaved-frames?          uint8
-           |  +--rw inactivity-timer
-           |  |  +--rw ticks-duration?   uint8
-           |  |  +--rw ticks-numbers?    uint16
-           |  +--rw retransmission-timer
-           |  |  +--rw ticks-duration?   uint8
-           |  |  +--rw ticks-numbers?    uint16
-           |  +--rw max-ack-requests?                uint8
-           |  +--rw (mode)?
-           |     +--:(no-ack)
-           |     +--:(ack-always)
-           |     +--:(ack-on-error)
-           |        +--rw tile-size?                 uint8
-           |        +--rw tile-in-all-1?             schc:all-1-data-type
-           |        +--rw ack-behavior?              schc:ack-behavior-type
-           |        +--rw bitmap-format?             bitmap-format-type
-           |        +--rw last-bitmap-compression?   boolean
+           | ...
            +--:(compression-universal) {compression or management}?
               +--rw entry-universal* [entry-index]
-              |  +--rw entry-index                 uint16
-              |  +--rw (field-or-space)
-              |  |  +--:(regular-field)
-              |  |  |  +--rw field-id              schc:fid-type
-              |  |  +--:(universal-option)
-              |  |     +--rw space-id              schc:space-id-type
-              |  |     +--rw universal-value       uint64
-              |  +--rw field-length                union
-              |  +--rw field-length-value?         uint16
-              |  +--rw field-position              uint8
-              |  +--rw direction-indicator         schc:di-type
-              |  +--rw target-value* [index]
-              |  |  +--rw index    uint16
-              |  |  +--rw value?   binary
-              |  +--rw matching-operator           schc:mo-type
-              |  +--rw matching-operator-value* [index]
-              |  |  +--rw index    uint16
-              |  |  +--rw value?   binary
-              |  +--rw comp-decomp-action          schc:cda-type
-              |  +--rw comp-decomp-action-value* [index]
-              |     +--rw index    uint16
-              |     +--rw value?   binary
-              +--rw action?                          action-type
-              +--rw action-value* [index]
-                 +--rw index    uint16
-                 +--rw value?   binary
+              |  ...
 ~~~
 {: #Fig-tree title='YANG Data Model used for CORECONF'}
 
 
 ## Set of Rules Editing
-For clarity reasons, this document will use YANG Identifiers in quotes instead
-of SID values. Each entry in the YANG tree has a corresponding SID number. Each
-level of the hierarchy is accessible through one or several keys. For example,
-to access the hierarchy under "rule", "rule-id-value" and "rule-id-length" must
-be specified. To access the hierarchy corresponding to a field entry in a
-compression rule, "rule-id-value" and "rule-id-length" must be followed by the
-"entry-index" of the "entry-universal" list. Since the TV, MO-value, and
-CDA-value are stored as lists, "index" must be added to access a specific
-element.
+For clarity reasons, this document uses YANG identifiers, written in quotes and
+in a fixed-width font, instead of SID values. Each entry in the YANG tree has a
+corresponding SID number. Each level of the hierarchy is accessible through one
+or several keys. For example, to access the hierarchy under "`rule`",
+"`rule-id-value`" and "`rule-id-length`" must be specified.
 
-Therefore, to access a specific element in a hierarchy, the SID of this element
-has to be specified, followed by the keys needed to access it.
-
-The "entry-index" is the position of the entry in the Rule, and the field is
-{::comment}WARNING (modify): 'the field it wants to modify': the entry-index is
-also used to address fields for FETCH or deletion. Check the wording.{:/comment}
-
-identified by a leaf ("field-id", or "space-id" and "universal-value") that is
-not a key. A manager therefore needs to know the "entry-index" of the field it
-wants to modify, for instance after a FETCH of the "field-id" of the Rule
-entries.
-
-For example, `["target-value/value", 5, 3, 0, 0]` is used to access the first
-value (0) of TV of the first entry (0), for instance the IPv6 Version, of Rule
-5/3.
-
-## Management Errors
-
-There are different levels of error detection:
-
-* CORECONF Errors: these errors are directly generated at the CORECONF-managed
-  context level. For instance, retrieving a value with a wrong key.
-* YANG validation errors: the data model does not conform with constraints such
-  as "must" or "mandatory". This check is optional, since it may require a lot
-  of resources on a device.
-* SCHC errors: errors on the Data Model that cannot be detected at the YANG
-  level. For example, the rule numbering does not correspond to a binary tree.
-
-## CoAP Methods
 
 ### FETCH
 
@@ -650,189 +670,130 @@ RES: 2.05 Content
 }
 ~~~
 
-### iPATCH
+### iPATCH {#sec-ipatch}
 
-{::comment}WARNING (modify): this section (up to 'Adding an element') shows
-iPATCH modifying TV, MO and CDA of an existing rule, which is not allowed
-anymore.{:/comment}
+iPATCH can only be used to create a complete rule or to delete a rule. It is
+forbidden to modify, add or delete an element of an existing rule (an entry, a
+Target Value, a Matching Operator, etc.), since a rule cannot be changed without
+changing its rule ID (see {{sec-rule-status}}). The creation and the deletion
+follow the rule status procedures ({{sec-rule-status}}).
 
-Several payload formats can be used in a CoAP iPATCH request to modify SCHC rule
-parameters. For example, when the entry 3 in Rule 7/8 is configured as
-ignore/value-sent and no target value has been defined, the following iPATCH
-request payload sets a new Target Value (TV) and updates the corresponding
-Matching Operator (MO) and Compression/Decompression Action (CDA):
+#### Creating a rule
 
-~~~
-  iPATCH /c 
-  {
-    ["target-value", 7, 8, 3] : [{delta_TV: 0, delta_value: value}],
-    ["matching-operator", 7, 8, 3] : "mo-equal",
-    ["comp-decomp-action", 7, 8, 3] : "cda-not-sent"
-  }
-~~~
+The target of the iPATCH request is the rule, identified by its keys
+"`rule-id-value`" and "`rule-id-length`", and the value is the complete rule:
+its nature and all its entries. The model requires that the indices of the lists
+of the rule ("`entry-index`" and "`index`") be strictly incremental. CORECONF
+does not enforce it; it relies on the node that builds the rule. If the rule
+already exists, the request follows the idempotent creation (see
+{{sec-idempotent-creation}}). The "`rule-status`" of the rule is not part of the
+request: if it is present, it is ignored, since each node sets the status of its
+rules according to its own protocol state.
 
-It is possible to represent each field update as a separate entry in the
-payload, as shown above. However, when the modifications apply to elements of
-the same subtree, it is RECOMMENDED to group them within a single structure
-inside the iPATCH request payload, as shown below:
-
-~~~
-  iPATCH /c 
-  {
-    ["entry-universal", 7, 8, 3] : { 
-        delta_target-value       : [{delta_index : 0, delta_value : value}],
-        delta_matching-operator  : "mo-equal",
-        delta_comp-decomp-action : "cda-not-sent"
-    }
-}
-~~~
-
-Both payload formats are valid encodings for a CoAP iPATCH request. The
-interpretation and application of the modifications are implementation-specific.
-
-{::comment}LT: I don't understand - Alejandro: clear now?{:/comment}
-The same approach applies to rule updates and YANG leaf-list objects, where
-multiple related modifications may be grouped within a single iPATCH request.
-
-#### Adding an element
-
-If the target object, field, or entry does not exist in the SCHC context, it is
-added. It supports two main cases:
-
-* Adding a new key-value pair to an existing object.
-* Adding a new object to an existing list.
-
-When adding a new element to a YANG leaf-list in the SCHC context, the model
-requires that each list index be strictly incremental. CORECONF does not enforce
-this automatically; it relies on the client or system to provide correctly
-ordered indices.
-
-Example: Add TV into the entry 3 (fid-ipv6-payload-length) in Rule 0/3
+Example: creation of Rule 9/4, whose first entry is the IPv6 Version.
 
 ~~~
   REQ: iPATCH /c
-      (Content-Format: application/yang-identifiers+cbor-seq)
+       (Content-Format: application/yang-instances+cbor-seq)
   {
-    ["target-value", 0, 3, 3] : [
-        {delta_index : 0, delta_value : h"50"},
-        {delta_index : 1, delta_value : h"55"}
-    ]
+    ["rule", 9, 4] : {
+        "rule-nature" : "nature-compression",
+        "entry-universal" : [
+          { "entry-index"         : 0,
+            "field-id"            : "fid-ipv6-version",
+            "field-length"        : 4,
+            "field-position"      : 1,
+            "direction-indicator" : "di-bidirectional",
+            "target-value"        : [{"index" : 0, "value" : h"06"}],
+            "matching-operator"   : "mo-equal",
+            "comp-decomp-action"  : "cda-not-sent" },
+          ...
+        ]
+    }
   }
-  
+
   RES: 2.04 Changed
 ~~~
 
-{::comment}WARNING (modify): remove this subsection, or turn it into a
-description of what is refused (modification of an existing rule).{:/comment}
+#### Deleting a rule
 
-#### Modify an element
+The target of the iPATCH request is the rule, and the value is null.
 
-If the target object, field, or entry does exist in the SCHC context, it is
-updated.
-
-Examples:
-
-- The entry 0 (fid-ipv6-version) is in Rule 6/3.
+Example: deletion of Rule 7/8.
 
 ~~~
   REQ: iPATCH /c
-      (Content-Format: application/yang-identifiers+cbor-seq)
+       (Content-Format: application/yang-instances+cbor-seq)
+  {
+    ["rule", 7, 8]: null
+  }
+
+  RES: 2.04 Changed
+~~~
+
+The management rules cannot be deleted (see {{sec-mgmt-rules}}): a deletion
+whose target is a management rule is refused.
+
+Deleting the top-level object (`ietf-schc:schc`) deletes all the rules of the
+SoR, except the management rules. Each rule is deleted as a single rule (see
+{{sec-rule-deletion}}): it becomes `invalid` for a Guard period, after which the
+SoR is reduced to a minimal representation, which only contains the management
+rules:
+
+~~~
+{"ietf-schc:schc": {"rule": [ management rules ]}}
+~~~
+
+This ensures the SCHC context remains structurally valid, and that the
+management of the SCHC instance remains possible.
+
+#### Forbidden requests
+
+A node receiving an iPATCH request whose target is an element of a rule, such as
+an entry, a leaf or a list element, MUST refuse it with 4.03 Forbidden, whether
+this element exists or not.
+
+Examples:
+
+- Change of the Matching Operator and the CDA of the entry 0 of Rule 6/3:
+
+~~~
+  REQ: iPATCH /c
+       (Content-Format: application/yang-instances+cbor-seq)
   {
     ["entry-universal", 6, 3, 0] : {
-        {"delta_target-value": []},
         {"delta_matching-operator": "mo-ignore"},
         {"delta_comp-decomp-action": "cda-value-sent"}
     }
   }
-  
-  RES: 2.04 Changed
+
+  RES: 4.03 Forbidden
 ~~~
 
-
-- The entry 0 is not in Rule 7/8 but Rule 7/8 exists. The entry is added, so its
-  mandatory leaves (here the field-id, the field-length, the field-position and
-  the direction-indicator) have to be provided.
+- Addition of a Target Value to the entry 3 of Rule 0/3:
 
 ~~~
   REQ: iPATCH /c
-       (Content-Format: application/yang-identifiers+cbor-seq)
+       (Content-Format: application/yang-instances+cbor-seq)
   {
-    ["entry-universal", 7, 8, 0] : {
-        {"delta_field-id"           : "fid-ipv6-version"},
-        {"delta_field-length"       : 4},
-        {"delta_field-position"     : 1},
-        {"delta_direction-indicator": "di-bidirectional"},
-        {"delta_target-value"       : []},
-        {"delta_matching-operator"  : "mo-ignore"},
-        {"delta_comp-decomp-action" : "cda-value-sent"}
-    }
+    ["target-value", 0, 3, 3] : [
+        {delta_index : 0, delta_value : h"50"}
+    ]
   }
-  
-  RES: 2.04 Changed
+
+  RES: 4.03 Forbidden
 ~~~
 
-- The entry 0 is not in Rule 5/8, and Rule 5/8 does not exist. Therefore, Rule
-  5/8 cannot be added in order to include the entry 0 because other fields,
-  which are not keys, cannot be deducted at every depth of the context.
+- Deletion of the "`rule-id-value`" key of Rule 0/3:
 
 ~~~
   REQ: iPATCH /c
-       (Content-Format: application/yang-identifiers+cbor-seq)
-  {
-    ["entry-universal", 5, 8, 0] : {
-        {"delta_target-value"       : []},
-        {"delta_matching-operator"  : "mo-ignore"},
-        {"delta_comp-decomp-action" : "cda-value-sent"}
-    }
-  }
-  
-  RES: 4.04 Not Found
-~~~
-
-#### Delete an element
-
-If the specified value in the request is "null", it deletes an object, field, or
-entry from the SCHC context
-
-Example:
-
-- Delete Rule 7/8
-
-~~~
-  REQ: iPATCH /c
-       (Content-Format: application/yang-identifiers+cbor-seq)
-  {
-    ["rule", 7, 8]: null
-  }
-  
-  RES: 2.04 Changed
-~~~
-
-When deleting objects in the SCHC context via iPATCH, the operation is
-restricted to prevent removal of required structural elements. Deleting the
-top-level object (`ietf-schc:schc`) does not remove it entirely; instead, the
-object is reset to a minimal representation:
-
-~~~
-{"ietf-schc:schc": {"rule": []}}
-~~~
-
-{::comment}WARNING (modify): 'Updates to existing objects are generally
-allowed': contradicts the prohibition of modification.{:/comment}
-
-This ensures the SCHC context remains structurally valid. Updates to existing
-objects are generally allowed, but deletion of protected keys is forbidden.
-
-Example: Delete rule-id-value of Rule 0/3
-
-~~~
-  REQ: iPATCH /c
-       (Content-Format: application/yang-identifiers+cbor-seq)
+       (Content-Format: application/yang-instances+cbor-seq)
   {
     ["rule-id-value", 0, 3]: null
   }
-  
-  RES: 4.00 Bad Request
+
+  RES: 4.03 Forbidden
 ~~~
 
 ### POST {#sec-post-method}
@@ -909,11 +870,11 @@ via a POST CoAP message, as described in Section {{sec-post-method}}.
 
 ### Duplicate Rule {#sec-duplicate-rule-rpc}
 
-To add a new rule, instead of using the iPATCH method with a full rule
 {::comment}WARNING (modify): the optional ipatch-sequence modifies the copy
 before it is added. Check that it is still consistent with the prohibition (new
 rule only).{:/comment}
 
+To add a new rule, instead of using the iPATCH method with a full rule
 definition (especially when the new rule is similar to an existing one), the
 RECOMMENDED approach is to use the `duplicate-rule` RPC. This operation copies
 an existing rule ("from") into a new rule ("to"), and can optionally include an
@@ -994,6 +955,19 @@ requested. The precise error code and diagnostic message are
 implementation-dependent but SHOULD provide enough context for the management
 entity to identify the cause of failure.
 
+## Management Errors
+
+There are different levels of error detection:
+
+* CORECONF Errors: these errors are directly generated at the CORECONF-managed
+  context level. For instance, retrieving a value with a wrong key.
+* YANG validation errors: the data model does not conform with constraints such
+  as "must" or "mandatory". This check is optional, since it may require a lot
+  of resources on a device.
+* SCHC errors: errors on the Data Model that cannot be detected at the YANG
+  level. For example, the rule numbering does not correspond to a binary tree.
+* iPATCH on a rule element.
+
 # Protocol Stack {#sec-protocols}
 
 The management inside the instance has its own IPv6 stack, independent of the
@@ -1007,12 +981,12 @@ Both endpoints implement CoAP client and server capabilities, that is, both
 endpoints are capable of sending requests and processing responses. The server
 uses port 5683 and the client 3865.
 
-## Management Compression Rules (M Rules)
+## Management Compression Rules {#sec-mgmt-rules}
 
 To enable CORECONF-based context and rule management over SCHC, a set of
-dedicated management rules, identified as M rules, is defined. These rules are
-used exclusively for management traffic, that is, packets exchanged between SCHC
-endpoints for the purpose of managing rules, not for application data transfer.
+dedicated management rules is defined. These rules are used exclusively for
+management traffic, that is, packets exchanged between SCHC endpoints for the
+purpose of managing rules, not for application data transfer.
 
 This specification introduces four rules, allowing bidirectional operation and
 fine control over management capabilities. Each rule defines the compression
@@ -1031,15 +1005,16 @@ Implementations MAY choose to support only a subset of these rules, depending on
 their operational or security requirements. For instance, an implementation may
 include only M3 and M4 to permit management operations exclusively from one
 endpoint, effectively preventing unsolicited management requests in the other
-direction. In this sense, the absence of certain M rules in the SoR implicitly
-acts as a policy mechanism or safeguard for rule management operations.
+direction. In this sense, the absence of some management rules in the SoR
+implicitly acts as a policy mechanism or safeguard for rule management
+operations.
 
-M rules are protected elements within the SoR. They define the operation of the
-management channel itself and therefore MUST NOT be modified, duplicated, or
-deleted through CORECONF operations. Any attempt to apply a modification or
-duplication request to an M rule MUST result in an Unauthorized error response.
-This restriction ensures the integrity and stability of the SCHC management
-process.
+Management rules are protected elements within the SoR. They define the
+operation of the management channel itself and therefore MUST NOT be modified,
+duplicated, or deleted through CORECONF operations. Any attempt to apply a
+modification, duplication or deletion request to a management rule MUST result
+in an Unauthorized error response. This restriction ensures the integrity and
+stability of the SCHC management process.
 
 ~~~
  +-------------------------------------------------------------------+
@@ -1448,6 +1423,80 @@ rpc duplicate-rule {
 }
 ~~~
 
+# Rule Status State Machine {#sec-fsm}
+
+{{Fig-fsm}} summarizes the statuses of a rule on one end, and the transitions
+described in {{sec-rule-status}}. The `invalid` status has two phases: the Guard
+period is either waiting for the acknowledgement of the deletion sent by this
+end, or running.
+
+~~~ aasvg
+              +-------------------- T2 -----------------+
+              |                                         v
+          +--------+    T1    +-----------+   T5    +--------+
+          |        |--------->|           |-------->|        |
+          |  free  |          | candidate |         | valid  |
+          |        |<---------|           |         |        |
+          +--------+    T3    +-----------+         +--------+
+            |   ^               |    ^  |               |
+         T8 |   | T9         T6 |    +--+ T4            | T7
+            v   |               v                       v
+        +-----------------------------------------------------+
+        | guard waiting for ack                               |
+        |                      invalid                        |
+        | guard running                                       |
+        +-----------------------------------------------------+
+                              |   ^
+                              +---+ T10
+~~~
+{: #Fig-fsm title='Rule status state machine on one end'}
+
+* T1, `free` to `candidate`: the end decides to create a rule, with a rule ID in
+  its part of the rule ID space (see {{sec-simultaneous-creation}}) that does
+  not overlap an existing rule ID. It sends the creation.
+* T2, `free` to `valid`: a creation is received. The end answers 2.04 Changed.
+* T3, `candidate` to `free`: 4.09 Conflict is received for the creation.
+* T4, `candidate` to `candidate`: 5.03 Service Unavailable is received, the CoAP
+  exchange is abandoned, or the end restarts. The creation is repeated, after
+  the Max-Age delay for a 5.03. A Device that receives a creation for this rule
+  ID answers 4.09 Conflict.
+* T5, `candidate` to `valid`: 2.04 Changed is received for the creation, a SCHC
+  PDU carrying the rule ID is received and decoded, or, on the Core only, a
+  creation of the same rule ID is received from the Device. In the last case,
+  the received rule replaces the `candidate` one, and the Core answers 2.04
+  Changed. In all cases, the creation stops.
+* T6, `candidate` to `invalid`: a deletion is received (the Guard period starts,
+  the creation stops, the end answers 2.04 Changed), or the end gives up the
+  rule and sends a deletion (the Guard period waits for the acknowledgement).
+* T7, `valid` to `invalid`: the end sends a deletion (the Guard period waits for
+  the acknowledgement), or receives one (the Guard period starts, the end
+  answers 2.04 Changed).
+* T8, `free` to `invalid`: a deletion is received for a free rule ID. The Guard
+  period starts, and the end answers 2.04 Changed.
+* T9, `invalid` to `free`: the Guard period is over. The rule is marked `free`
+  or removed from the SoR.
+* T10, `invalid` to `invalid`:
+  * 2.04 Changed is received for the deletion sent by the end: the Guard period
+    starts;
+  * the CoAP exchange of the deletion is abandoned, or the end restarts while
+    waiting for the acknowledgement: the deletion is repeated;
+  * a deletion is received: the end answers 2.04 Changed, and the Guard period
+    restarts, unless it is waiting for the acknowledgement of the deletion sent
+    by the end;
+  * a creation is received: the end answers 5.03 Service Unavailable, with the
+    remaining duration of the Guard period in Max-Age;
+  * the end restarts while the Guard period is running: a new, complete Guard
+    period starts.
+
+The following events do not change the status:
+
+* `valid`: a SCHC PDU carrying the rule ID is decoded with the rule. A creation
+  with the same content is answered 2.04 Changed, a creation with a different
+  content or an overlapping rule ID is answered 4.09 Conflict.
+* `candidate`: no SCHC PDU is generated with the rule. An answer that does not
+  correspond to the creation of the current `candidate` rule is ignored.
+* `free` and `invalid`: a SCHC PDU carrying the rule ID is dropped.
+
 # Changes {#changes}
 
 * {{Fig-tree}}: the YANG tree is the one of {{I-D.toutain-schc-rfc9363bis}}
@@ -1498,6 +1547,33 @@ rpc duplicate-rule {
   the `candidate` rule it was sent for. Management requests must be
   deduplicated. A new rule ID must not overlap an existing one. The alignment of
   the "X free" label in {{Fig-Rule-creation}} was fixed.
+* New appendix "Rule Status State Machine" ({{sec-fsm}}), summarizing the
+  statuses and transitions of a rule.
+* "Rule deletion": every received deletion (re)starts the Guard period, even if
+  the rule is already `invalid` or `free`, to cover crossing deletions.
+* "Management Protocol Stack" ({{sec-mgmt-stack}}) added: IPv6, UDP, CoAP with
+  optional OSCORE, and CORECONF. {{RFC0768}}, {{RFC8200}} and {{RFC8613}} are
+  normative references.
+* "M Rules" replaced by "management rules" in the text and in
+  {{Fig-mgmt-stack}}; the four management rules keep their names M1 to M4.
+* "YANG Data Model": added a paragraph explaining how the fixed elements of the
+  management protocol stack (addresses, ports, CoAP methods and options) make
+  the management traffic very compressible.
+* "Set of Rules Editing": the YANG identifiers are written in quotes and in a
+  fixed-width font.
+* "Management Errors" moved to the end of the "Management messages" section.
+* "iPATCH": iPATCH can only create a complete rule or delete a rule; the
+  modification, addition or deletion of an element of an existing rule is
+  refused with 4.03 Forbidden. The examples of modification were replaced by
+  examples of creation, deletion and refused requests, and the Content-Format of
+  the iPATCH requests was corrected (application/yang-instances+cbor-seq).
+* "rule-status" is managed locally by each node according to its protocol state:
+  it is never set by the other node, a value received in a creation is ignored,
+  and it can be read with FETCH.
+* "Deleting a rule": the management rules cannot be deleted; deleting the
+  top-level object deletes all the other rules, each one following the deletion
+  procedure, and keeps the management rules. The "Management Compression Rules"
+  section now also refuses the deletion of a management rule.
 * "Restart of an end" ({{sec-restart}}) added: the rules and their status should
   be kept in a stable memory, the Guard period of an `invalid` rule restarts
   after a restart, and the freshness of the management requests is checked when
