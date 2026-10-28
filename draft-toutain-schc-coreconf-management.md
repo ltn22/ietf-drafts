@@ -734,15 +734,18 @@ Example: deletion of Rule 7/8.
 The management rules cannot be deleted (see {{sec-mgmt-rules}}): a deletion
 whose target is a management rule is refused.
 
-Deleting the top-level object (`ietf-schc:schc`) deletes all the rules of the
-SoR, except the management rules. Each rule is deleted as a single rule (see
-{{sec-rule-deletion}}): it becomes `invalid` for a Guard period, after which the
-SoR is reduced to a minimal representation, which only contains the management
-rules:
+Deleting the top-level object (`ietf-schc:schc`) is a factory reset: the SoR
+returns to the set of rules present at the start of the SCHC instance, including
+the management rules. Both nodes apply it, the node that sends the request and
+the node that receives it:
 
-~~~
-{"ietf-schc:schc": {"rule": [ management rules ]}}
-~~~
+* the rules that are not in the initial set, or whose content differs from the
+  initial one, are deleted as single rules (see {{sec-rule-deletion}}): they
+  become `invalid` for a Guard period;
+* the rules of the initial set that are missing are created again as soon as
+  their rule ID is `free`. On the node that sent the request, they are
+  `candidate` until it receives the acknowledgement of the request;
+* the rules of the initial set that have not been changed remain `valid`.
 
 This ensures the SCHC context remains structurally valid, and that the
 management of the SCHC instance remains possible.
@@ -796,7 +799,7 @@ Examples:
   RES: 4.03 Forbidden
 ~~~
 
-### POST {#sec-post-method}
+### RPC invocation (POST) {#sec-post-method}
 
 As described in {{I-D.ietf-core-comi}}, the POST CoAP method is used to trigger
 Remote Procedure Calls (RPC) and other actions within a SCHC endpoint. Thus, a
@@ -804,60 +807,29 @@ POST message can be sent to invoke a specific RPC on the remote endpoint.
 Details of the supported RPCs and their behavior are defined in Section
 {{sec-rpcs}}.
 
+The input parameters of an RPC acting on rules MUST provide the rule IDs of the
+rules on which the RPC is applied, so that both nodes know the rules concerned
+by the rule status procedures ({{sec-rule-status}}). The output of the RPC MUST
+provide a status summarizing the execution of the RPC.
+
 RPCs and actions are defined in a YANG Data Model with optional associated
-inputs and outputs, The request payload contains the RPC input map, if any. The
+inputs and outputs. The request payload contains the RPC input map, if any. The
 response payload contains the corresponding output map, if any.
 
-{::comment}WARNING (modify): 'fine-grained field updates' and 'only a few fields
-need to be updated' refer to modification. Check the whole Optimizations section
-(derive-from-existing-rule, entry-index).{:/comment}
+## Management Errors
 
-### Optimizations
+There are different levels of error detection:
 
-Two optimizations are possible: first, deriving rules to avoid sending the full
-object; second, using the entry-index for fine-grained field updates.
+* CORECONF Errors: these errors are directly generated at the CORECONF-managed
+  context level. For instance, retrieving a value with a wrong key.
+* YANG validation errors: the data model does not conform with constraints such
+  as "must" or "mandatory". This check is optional, since it may require a lot
+  of resources on a device.
+* SCHC errors: errors on the Data Model that cannot be detected at the YANG
+  level. For example, the rule numbering does not correspond to a binary tree.
+* iPATCH on a rule element.
 
-#### Derive-from-existing-rule optimization
-
-When sending SCHC rules in iPATCH messages, the naive approach is to include the
-full rule object in the payload, even if only a few fields need to be updated.
-This can be inefficient, especially in constrained environments. To reduce the
-amount of data transmitted, an optimization consists in deriving a new rule from
-an existing one and specifying only the fields that are changing.
-
-Therefore, for adding new rules, the RECOMMENDED method is to use the
-`duplicate-rule` RPC, defined in Section {{sec-duplicate-rule-rpc}}, which
-implements this derivation mechanism efficiently.
-
-#### Entry-index optimization
-
-In {{I-D.toutain-schc-rfc9363bis}}, a field entry of a compression Rule is a
-member of the "entry-universal" list, keyed by the single "entry-index" leaf.
-The field is identified by a "field-id", or, for a protocol option, by a
-"space-id" (the protocol containing the option, e.g., CoAP, QUIC, TCP) and a
-"universal-value" (the option itself). These leaves are not keys.
-
-{::comment}WARNING (modify): 'selective field-level updates without touching the
-rest of the rule': refers to modification.{:/comment}
-
-An entry is therefore reached with three keys: "rule-id-value", "rule-id-length"
-and "entry-index", whatever the protocol and the option. This allows efficient
-selective field-level updates without touching the rest of the rule, and keeps
-the request short, since the field position and direction do not have to be
-repeated in the path.
-
-~~~
-REQ: FETCH </c>
-        (Content-Format: application/yang-identifiers+cbor-seq)
-   ["space-id", 8, 3, 7],
-   ["universal-value", 8, 3, 7],
-   ["matching-operator", 8, 3, 7]
-~~~
-
-The example fetches the protocol and the option, and the Matching Operator, of
-the entry 7 of Rule 8/3.
-
-## RPC statements {#sec-rpcs}
+# RPCs {#sec-rpcs}
 
 A YANG "RPC" is an operation that may be invoked within a SCHC endpoint and
 triggers a specified behavior. Within the context of rule management, RPCs are
@@ -867,8 +839,16 @@ operations, such as rebooting the remote device endpoint.
 Each RPC resource has specific inputs and outputs, and may be invoked remotely
 via a POST CoAP message, as described in Section {{sec-post-method}}.
 
+The definition of the RPCs is out of the scope of this document: the RPCs have
+to be adapted to the traffic, in order to optimize the rule management for its
+patterns. Other documents may define RPCs, possibly in other YANG Data Models
+than the SCHC one.
 
-### Duplicate Rule {#sec-duplicate-rule-rpc}
+
+
+This section illustrates the use of RPCs with the "duplicate-rule" RPC.
+
+## Duplicate Rule {#sec-duplicate-rule-rpc}
 
 {::comment}WARNING (modify): the optional ipatch-sequence modifies the copy
 before it is added. Check that it is still consistent with the prohibition (new
@@ -943,7 +923,7 @@ RES:  2.04 Changed
 }
 ~~~
 
-#### Error Handling
+### Error Handling
 
 The `duplicate-rule` operation SHALL be atomic. If an error occurs during either
 stage of the process (rule duplication or subsequent modification through the
@@ -954,19 +934,6 @@ negative status values ("to-rule-already-exists", "from-rule-not-found" or
 requested. The precise error code and diagnostic message are
 implementation-dependent but SHOULD provide enough context for the management
 entity to identify the cause of failure.
-
-## Management Errors
-
-There are different levels of error detection:
-
-* CORECONF Errors: these errors are directly generated at the CORECONF-managed
-  context level. For instance, retrieving a value with a wrong key.
-* YANG validation errors: the data model does not conform with constraints such
-  as "must" or "mandatory". This check is optional, since it may require a lot
-  of resources on a device.
-* SCHC errors: errors on the Data Model that cannot be detected at the YANG
-  level. For example, the rule numbering does not correspond to a binary tree.
-* iPATCH on a rule element.
 
 # Protocol Stack {#sec-protocols}
 
@@ -993,13 +960,14 @@ fine control over management capabilities. Each rule defines the compression
 behavior for management messages in its direction, distinguishing between
 requests and responses.
 
-* M1: Handles packets containing a payload (e.g., CoAP requests or Content
-  responses) in one direction (Uplink).
-* M2: Handles packets without a payload (e.g., CoAP responses) in the same
-  direction (Uplink).
-* M3: Mirrors M1 in the opposite direction (Downlink), for payload-bearing
-  management messages.
-* M4: Mirrors M2 in the opposite direction (Downlink), for payloadless messages.
+* M1: the requests sent by the Device (Uplink), and their responses carrying a
+  payload (Downlink).
+* M2: the responses without payload to the requests sent by the Device
+  (Downlink).
+* M3: mirrors M1 for the requests sent by the Core (Downlink), and their
+  responses carrying a payload (Uplink).
+* M4: mirrors M2 for the responses without payload to the requests sent by the
+  Core (Uplink).
 
 Implementations MAY choose to support only a subset of these rules, depending on
 their operational or security requirements. For instance, an implementation may
@@ -1016,145 +984,7 @@ modification, duplication or deletion request to a management rule MUST result
 in an Unauthorized error response. This restriction ensures the integrity and
 stability of the SCHC management process.
 
-~~~
- +-------------------------------------------------------------------+
- |RuleID M1                                                          |
- +-------------------+--+--+--+-----------+-------------+------------+
- |        FID        |FL|FP|DI|  TV       |     MO      |    CDA     |
- +-------------------+--+--+--+-----------+-------------+------------+
- |IPv6 Version       |4 |1 |Bi|6          |equal        |not-sent    |
- |IPv6 Traffic Class |8 |1 |Bi|1          |equal        |not-sent    |
- |IPv6 Flow Label    |20|1 |Bi|144470     |equal        |not-sent    |
- |IPv6 Length        |16|1 |Bi|           |ignore       |compute-*   |
- |IPv6 Next Header   |8 |1 |Bi|17         |equal        |not-sent    |
- |IPv6 Hop Limit     |8 |1 |Bi|64         |equal        |not-sent    |
- |IPv6 DevPrefix     |64|1 |Bi|fe80::/64  |equal        |not-sent    |
- |IPv6 DevIID        |64|1 |Bi|::2        |equal        |not-sent    |
- |IPv6 AppPrefix     |64|1 |Bi|fe80::/64  |equal        |not-sent    |
- |IPv6 AppIID        |64|1 |Bi|::1        |equal        |not-sent    |
- +===================+==+==+==+===========+=============+============+
- |UDP DevPort        |16|1 |Bi|3865       |equal        |not-sent    |
- |UDP AppPort        |16|1 |Bi|5683       |equal        |not-sent    |
- |UDP Length         |16|1 |Bi|           |ignore       |compute-*   |
- |UDP Checksum       |16|1 |Bi|           |ignore       |compute-*   |
- +===================+==+==+==+===========+=============+============+
- |CoAP Version       |2 |1 |Bi|1          |equal        |not-sent    |
- |CoAP Type          |2 |1 |Dw|2          |equal        |not-sent    |
- |CoAP Type          |2 |1 |Up|0          |equal        |not-sent    |
- |CoAP TKL           |4 |1 |Bi|0          |equal        |not-sent    |
- |CoAP Code          |8 |1 |Up|[2, 5, 7]  |match-mapping|mapping-sent|
- |CoAP Code          |8 |1 |Dw|69         |equal        |not-sent    |
- |CoAP MID           |16|1 |Bi|0          |MSB(9)       |LSB         |
- |CoAP Uri-Path      |8 |1 |Bi|c          |equal        |not-sent    |
- |CoAP Content-Format|8 |1 |Bi|application|equal        |not-sent    |
- |                   |  |  |  |/yang-ident|             |            |
- |                   |  |  |  |fiers+cbor-|             |            |
- |                   |  |  |  |seq        |             |            |
- +===================+==+==+==+===========+=============+============+
-~~~
-{: #Fig-M1 title='Management Rule 1'}
-
-~~~
- +----------------------------------------------------------------------+
- |RuleID M2                                                             |
- +-------------------+--+--+--+--------------+-------------+------------+
- |        FID        |FL|FP|DI|      TV      |     MO      |    CDA     |
- +-------------------+--+--+--+--------------+-------------+------------+
- |IPv6 Version       |4 |1 |Bi|6             |equal        |not-sent    |
- |IPv6 Traffic Class |8 |1 |Bi|1             |equal        |not-sent    |
- |IPv6 Flow Label    |20|1 |Bi|144470        |equal        |not-sent    |
- |IPv6 Length        |16|1 |Bi|              |ignore       |compute-*   |
- |IPv6 Next Header   |8 |1 |Bi|17            |equal        |not-sent    |
- |IPv6 Hop Limit     |8 |1 |Bi|64            |equal        |not-sent    |
- |IPv6 DevPrefix     |64|1 |Bi|fe80::/64     |equal        |not-sent    |
- |IPv6 DevIID        |64|1 |Bi|::2           |equal        |not-sent    |
- |IPv6 AppPrefix     |64|1 |Bi|fe80::/64     |equal        |not-sent    |
- |IPv6 AppIID        |64|1 |Bi|::1           |equal        |not-sent    |
- +===================+==+==+==+==============+=============+============+
- |UDP DevPort        |16|1 |Bi|3865          |equal        |not-sent    |
- |UDP AppPort        |16|1 |Bi|5683          |equal        |not-sent    |
- |UDP Length         |16|1 |Bi|              |ignore       |compute-*   |
- |UDP Checksum       |16|1 |Bi|              |ignore       |compute-*   |
- +===================+==+==+==+==============+=============+============+
- |CoAP Version       |2 |1 |Bi|1             |equal        |not-sent    |
- |CoAP Type          |2 |1 |Dw|2             |equal        |not-sent    |
- |CoAP TKL           |4 |1 |Bi|0             |equal        |not-sent    |
- |CoAP Code          |8 |1 |Dw|[68, 128, 129,|match-mapping|mapping-sent|
- |                   |  |  |  | 132, 160]    |             |            |
- |CoAP MID           |16|1 |Bi|0             |MSB(9)       |LSB         |
- +===================+==+==+==+==============+=============+============+
-~~~
-{: #Fig-M2 title='Management Rule 2'}
-
-~~~
- +-------------------------------------------------------------------+
- |RuleID M3                                                          |
- +-------------------+--+--+--+-----------+-------------+------------+
- |        FID        |FL|FP|DI|  TV       |     MO      |    CDA     |
- +-------------------+--+--+--+-----------+-------------+------------+
- |IPv6 Version       |4 |1 |Bi|6          |equal        |not-sent    |
- |IPv6 Traffic Class |8 |1 |Bi|1          |equal        |not-sent    |
- |IPv6 Flow Label    |20|1 |Bi|144470     |equal        |not-sent    |
- |IPv6 Length        |16|1 |Bi|           |ignore       |compute-*   |
- |IPv6 Next Header   |8 |1 |Bi|17         |equal        |not-sent    |
- |IPv6 Hop Limit     |8 |1 |Bi|64         |equal        |not-sent    |
- |IPv6 DevPrefix     |64|1 |Bi|fe80::/64  |equal        |not-sent    |
- |IPv6 DevIID        |64|1 |Bi|::2        |equal        |not-sent    |
- |IPv6 AppPrefix     |64|1 |Bi|fe80::/64  |equal        |not-sent    |
- |IPv6 AppIID        |64|1 |Bi|::1        |equal        |not-sent    |
- +===================+==+==+==+===========+=============+============+
- |UDP DevPort        |16|1 |Bi|3865       |equal        |not-sent    |
- |UDP AppPort        |16|1 |Bi|5683       |equal        |not-sent    |
- |UDP Length         |16|1 |Bi|           |ignore       |compute-*   |
- |UDP Checksum       |16|1 |Bi|           |ignore       |compute-*   |
- +===================+==+==+==+===========+=============+============+
- |CoAP Version       |2 |1 |Bi|1          |equal        |not-sent    |
- |CoAP Type          |2 |1 |Up|2          |equal        |not-sent    |
- |CoAP Type          |2 |1 |Dw|0          |equal        |not-sent    |
- |CoAP TKL           |4 |1 |Bi|0          |equal        |not-sent    |
- |CoAP Code          |8 |1 |Dw|[2, 5, 7]  |match-mapping|mapping-sent|
- |CoAP Code          |8 |1 |Up|69         |equal        |not-sent    |
- |CoAP MID           |16|1 |Bi|0          |MSB(9)       |LSB         |
- |CoAP Uri-Path      |8 |1 |Bi|c          |equal        |not-sent    |
- |CoAP Content-Format|8 |1 |Bi|application|equal        |not-sent    |
- |                   |  |  |  |/yang-ident|             |            |
- |                   |  |  |  |fiers+cbor-|             |            |
- |                   |  |  |  |seq        |             |            |
- +===================+==+==+==+===========+=============+============+
-~~~
-{: #Fig-M3 title='Management Rule 3'}
-
-~~~
- +----------------------------------------------------------------------+
- |RuleID M4                                                             |
- +-------------------+--+--+--+--------------+-------------+------------+
- |        FID        |FL|FP|DI|      TV      |     MO      |    CDA     |
- +-------------------+--+--+--+--------------+-------------+------------+
- |IPv6 Version       |4 |1 |Bi|6             |equal        |not-sent    |
- |IPv6 Traffic Class |8 |1 |Bi|1             |equal        |not-sent    |
- |IPv6 Flow Label    |20|1 |Bi|144470        |equal        |not-sent    |
- |IPv6 Length        |16|1 |Bi|              |ignore       |compute-*   |
- |IPv6 Next Header   |8 |1 |Bi|17            |equal        |not-sent    |
- |IPv6 Hop Limit     |8 |1 |Bi|64            |equal        |not-sent    |
- |IPv6 DevPrefix     |64|1 |Bi|fe80::/64     |equal        |not-sent    |
- |IPv6 DevIID        |64|1 |Bi|::2           |equal        |not-sent    |
- |IPv6 AppPrefix     |64|1 |Bi|fe80::/64     |equal        |not-sent    |
- |IPv6 AppIID        |64|1 |Bi|::1           |equal        |not-sent    |
- +===================+==+==+==+==============+=============+============+
- |UDP DevPort        |16|1 |Bi|3865          |equal        |not-sent    |
- |UDP AppPort        |16|1 |Bi|5683          |equal        |not-sent    |
- |UDP Length         |16|1 |Bi|              |ignore       |compute-*   |
- |UDP Checksum       |16|1 |Bi|              |ignore       |compute-*   |
- +===================+==+==+==+==============+=============+============+
- |CoAP Version       |2 |1 |Bi|1             |equal        |not-sent    |
- |CoAP Type          |2 |1 |Up|2             |equal        |not-sent    |
- |CoAP TKL           |4 |1 |Bi|0             |equal        |not-sent    |
- |CoAP Code          |8 |1 |Up|[68, 128, 129,|match-mapping|mapping-sent|
- |                   |  |  |  | 132, 160]    |             |            |
- |CoAP MID           |16|1 |Bi|0             |MSB(9)       |LSB         |
- +===================+==+==+==+==============+=============+============+
-~~~
-{: #Fig-M4 title='Management Rule 4'}
+The four management rules are given in {{sec-mgmt-rules-tables}}.
 
 # OSCORE
 
@@ -1423,6 +1253,174 @@ rpc duplicate-rule {
 }
 ~~~
 
+# Management Rules {#sec-mgmt-rules-tables}
+
+This appendix gives the four management rules described in {{sec-mgmt-rules}}.
+They follow the management protocol stack ({{sec-mgmt-stack}}):
+
+* the Device has the IPv6 address fe80::1 and the Core the address fe80::2;
+* the CoAP server uses the UDP port 5683 and the CoAP client the port 3865. In
+  the exchanges initiated by the Device (M1 and M2), its port is 3865; in those
+  initiated by the Core (M3 and M4), the port of the Device is 5683;
+* the requests are Confirmable and have no Token. They use the methods FETCH,
+  iPATCH and POST on the datastore resource "c". The responses are piggybacked
+  in the Acknowledgement, and the error responses have no payload;
+* OSCORE is not used.
+
+In the tables, "ids" stands for the Content-Format
+application/yang-identifiers+cbor-seq (FETCH requests), and "inst" for
+application/yang-instances+cbor-seq (iPATCH and POST requests, and responses
+carrying a payload). The CoAP codes are given as numbers: 2 (POST), 5 (FETCH), 7
+(iPATCH), 68 (2.04 Changed), 69 (2.05 Content), 128 (4.00 Bad Request), 129
+(4.01 Unauthorized), 131 (4.03 Forbidden), 132 (4.04 Not Found), 137 (4.09
+Conflict), 160 (5.00 Internal Server Error) and 163 (5.03 Service Unavailable).
+
+{::comment}WARNING (5.03): a 5.03 Service Unavailable response carries a
+Max-Age option (see the idempotent creation), which is not described in M2 and
+M4. Either the Max-Age option is omitted when M2 or M4 is used (the client then
+waits for the default 60 seconds), or another management rule is
+needed.{:/comment}
+
+~~~
+ +---------------------------------------------------------------------+
+ |RuleID M1                                                            |
+ +-------------------+--+--+--+-------------+-------------+------------+
+ |        FID        |FL|FP|DI|     TV      |     MO      |    CDA     |
+ +-------------------+--+--+--+-------------+-------------+------------+
+ |IPv6 Version       |4 |1 |Bi|6            |equal        |not-sent    |
+ |IPv6 Traffic Class |8 |1 |Bi|1            |equal        |not-sent    |
+ |IPv6 Flow Label    |20|1 |Bi|144470       |equal        |not-sent    |
+ |IPv6 Length        |16|1 |Bi|             |ignore       |compute-*   |
+ |IPv6 Next Header   |8 |1 |Bi|17           |equal        |not-sent    |
+ |IPv6 Hop Limit     |8 |1 |Bi|64           |equal        |not-sent    |
+ |IPv6 DevPrefix     |64|1 |Bi|fe80::/64    |equal        |not-sent    |
+ |IPv6 DevIID        |64|1 |Bi|::1          |equal        |not-sent    |
+ |IPv6 AppPrefix     |64|1 |Bi|fe80::/64    |equal        |not-sent    |
+ |IPv6 AppIID        |64|1 |Bi|::2          |equal        |not-sent    |
+ +===================+==+==+==+=============+=============+============+
+ |UDP DevPort        |16|1 |Bi|3865         |equal        |not-sent    |
+ |UDP AppPort        |16|1 |Bi|5683         |equal        |not-sent    |
+ |UDP Length         |16|1 |Bi|             |ignore       |compute-*   |
+ |UDP Checksum       |16|1 |Bi|             |ignore       |compute-*   |
+ +===================+==+==+==+=============+=============+============+
+ |CoAP Version       |2 |1 |Bi|1            |equal        |not-sent    |
+ |CoAP Type          |2 |1 |Up|0            |equal        |not-sent    |
+ |CoAP Type          |2 |1 |Dw|2            |equal        |not-sent    |
+ |CoAP TKL           |4 |1 |Bi|0            |equal        |not-sent    |
+ |CoAP Code          |8 |1 |Up|[2, 5, 7]    |match-mapping|mapping-sent|
+ |CoAP Code          |8 |1 |Dw|[68, 69]     |match-mapping|mapping-sent|
+ |CoAP MID           |16|1 |Bi|0            |MSB(9)       |LSB         |
+ |CoAP Uri-Path      |8 |1 |Up|c            |equal        |not-sent    |
+ |CoAP Content-Format|8 |1 |Up|[ids, inst]  |match-mapping|mapping-sent|
+ |CoAP Content-Format|8 |1 |Dw|inst         |equal        |not-sent    |
+ +===================+==+==+==+=============+=============+============+
+~~~
+{: #Fig-M1 title='Management Rule 1'}
+
+~~~
+ +---------------------------------------------------------------------+
+ |RuleID M2                                                            |
+ +-------------------+--+--+--+-------------+-------------+------------+
+ |        FID        |FL|FP|DI|     TV      |     MO      |    CDA     |
+ +-------------------+--+--+--+-------------+-------------+------------+
+ |IPv6 Version       |4 |1 |Bi|6            |equal        |not-sent    |
+ |IPv6 Traffic Class |8 |1 |Bi|1            |equal        |not-sent    |
+ |IPv6 Flow Label    |20|1 |Bi|144470       |equal        |not-sent    |
+ |IPv6 Length        |16|1 |Bi|             |ignore       |compute-*   |
+ |IPv6 Next Header   |8 |1 |Bi|17           |equal        |not-sent    |
+ |IPv6 Hop Limit     |8 |1 |Bi|64           |equal        |not-sent    |
+ |IPv6 DevPrefix     |64|1 |Bi|fe80::/64    |equal        |not-sent    |
+ |IPv6 DevIID        |64|1 |Bi|::1          |equal        |not-sent    |
+ |IPv6 AppPrefix     |64|1 |Bi|fe80::/64    |equal        |not-sent    |
+ |IPv6 AppIID        |64|1 |Bi|::2          |equal        |not-sent    |
+ +===================+==+==+==+=============+=============+============+
+ |UDP DevPort        |16|1 |Bi|3865         |equal        |not-sent    |
+ |UDP AppPort        |16|1 |Bi|5683         |equal        |not-sent    |
+ |UDP Length         |16|1 |Bi|             |ignore       |compute-*   |
+ |UDP Checksum       |16|1 |Bi|             |ignore       |compute-*   |
+ +===================+==+==+==+=============+=============+============+
+ |CoAP Version       |2 |1 |Bi|1            |equal        |not-sent    |
+ |CoAP Type          |2 |1 |Dw|2            |equal        |not-sent    |
+ |CoAP TKL           |4 |1 |Bi|0            |equal        |not-sent    |
+ |CoAP Code          |8 |1 |Dw|[68, 128,    |match-mapping|mapping-sent|
+ |                   |  |  |  | 129, 131,   |             |            |
+ |                   |  |  |  | 132, 137,   |             |            |
+ |                   |  |  |  | 160, 163]   |             |            |
+ |CoAP MID           |16|1 |Bi|0            |MSB(9)       |LSB         |
+ +===================+==+==+==+=============+=============+============+
+~~~
+{: #Fig-M2 title='Management Rule 2'}
+
+~~~
+ +---------------------------------------------------------------------+
+ |RuleID M3                                                            |
+ +-------------------+--+--+--+-------------+-------------+------------+
+ |        FID        |FL|FP|DI|     TV      |     MO      |    CDA     |
+ +-------------------+--+--+--+-------------+-------------+------------+
+ |IPv6 Version       |4 |1 |Bi|6            |equal        |not-sent    |
+ |IPv6 Traffic Class |8 |1 |Bi|1            |equal        |not-sent    |
+ |IPv6 Flow Label    |20|1 |Bi|144470       |equal        |not-sent    |
+ |IPv6 Length        |16|1 |Bi|             |ignore       |compute-*   |
+ |IPv6 Next Header   |8 |1 |Bi|17           |equal        |not-sent    |
+ |IPv6 Hop Limit     |8 |1 |Bi|64           |equal        |not-sent    |
+ |IPv6 DevPrefix     |64|1 |Bi|fe80::/64    |equal        |not-sent    |
+ |IPv6 DevIID        |64|1 |Bi|::1          |equal        |not-sent    |
+ |IPv6 AppPrefix     |64|1 |Bi|fe80::/64    |equal        |not-sent    |
+ |IPv6 AppIID        |64|1 |Bi|::2          |equal        |not-sent    |
+ +===================+==+==+==+=============+=============+============+
+ |UDP DevPort        |16|1 |Bi|5683         |equal        |not-sent    |
+ |UDP AppPort        |16|1 |Bi|3865         |equal        |not-sent    |
+ |UDP Length         |16|1 |Bi|             |ignore       |compute-*   |
+ |UDP Checksum       |16|1 |Bi|             |ignore       |compute-*   |
+ +===================+==+==+==+=============+=============+============+
+ |CoAP Version       |2 |1 |Bi|1            |equal        |not-sent    |
+ |CoAP Type          |2 |1 |Dw|0            |equal        |not-sent    |
+ |CoAP Type          |2 |1 |Up|2            |equal        |not-sent    |
+ |CoAP TKL           |4 |1 |Bi|0            |equal        |not-sent    |
+ |CoAP Code          |8 |1 |Dw|[2, 5, 7]    |match-mapping|mapping-sent|
+ |CoAP Code          |8 |1 |Up|[68, 69]     |match-mapping|mapping-sent|
+ |CoAP MID           |16|1 |Bi|0            |MSB(9)       |LSB         |
+ |CoAP Uri-Path      |8 |1 |Dw|c            |equal        |not-sent    |
+ |CoAP Content-Format|8 |1 |Dw|[ids, inst]  |match-mapping|mapping-sent|
+ |CoAP Content-Format|8 |1 |Up|inst         |equal        |not-sent    |
+ +===================+==+==+==+=============+=============+============+
+~~~
+{: #Fig-M3 title='Management Rule 3'}
+
+~~~
+ +---------------------------------------------------------------------+
+ |RuleID M4                                                            |
+ +-------------------+--+--+--+-------------+-------------+------------+
+ |        FID        |FL|FP|DI|     TV      |     MO      |    CDA     |
+ +-------------------+--+--+--+-------------+-------------+------------+
+ |IPv6 Version       |4 |1 |Bi|6            |equal        |not-sent    |
+ |IPv6 Traffic Class |8 |1 |Bi|1            |equal        |not-sent    |
+ |IPv6 Flow Label    |20|1 |Bi|144470       |equal        |not-sent    |
+ |IPv6 Length        |16|1 |Bi|             |ignore       |compute-*   |
+ |IPv6 Next Header   |8 |1 |Bi|17           |equal        |not-sent    |
+ |IPv6 Hop Limit     |8 |1 |Bi|64           |equal        |not-sent    |
+ |IPv6 DevPrefix     |64|1 |Bi|fe80::/64    |equal        |not-sent    |
+ |IPv6 DevIID        |64|1 |Bi|::1          |equal        |not-sent    |
+ |IPv6 AppPrefix     |64|1 |Bi|fe80::/64    |equal        |not-sent    |
+ |IPv6 AppIID        |64|1 |Bi|::2          |equal        |not-sent    |
+ +===================+==+==+==+=============+=============+============+
+ |UDP DevPort        |16|1 |Bi|5683         |equal        |not-sent    |
+ |UDP AppPort        |16|1 |Bi|3865         |equal        |not-sent    |
+ |UDP Length         |16|1 |Bi|             |ignore       |compute-*   |
+ |UDP Checksum       |16|1 |Bi|             |ignore       |compute-*   |
+ +===================+==+==+==+=============+=============+============+
+ |CoAP Version       |2 |1 |Bi|1            |equal        |not-sent    |
+ |CoAP Type          |2 |1 |Up|2            |equal        |not-sent    |
+ |CoAP TKL           |4 |1 |Bi|0            |equal        |not-sent    |
+ |CoAP Code          |8 |1 |Up|[68, 128,    |match-mapping|mapping-sent|
+ |                   |  |  |  | 129, 131,   |             |            |
+ |                   |  |  |  | 132, 137,   |             |            |
+ |                   |  |  |  | 160, 163]   |             |            |
+ |CoAP MID           |16|1 |Bi|0            |MSB(9)       |LSB         |
+ +===================+==+==+==+=============+=============+============+
+~~~
+{: #Fig-M4 title='Management Rule 4'}
+
 # Rule Status State Machine {#sec-fsm}
 
 {{Fig-fsm}} summarizes the statuses of a rule on one end, and the transitions
@@ -1574,6 +1572,26 @@ The following events do not change the status:
   top-level object deletes all the other rules, each one following the deletion
   procedure, and keeps the management rules. The "Management Compression Rules"
   section now also refuses the deletion of a management rule.
+* "Deleting a rule": deleting the top-level object is now a factory reset, which
+  restores the set of rules present at the start of the SCHC instance.
+* The "POST" subsection of "CoAP Methods" is renamed "RPC invocation (POST)".
+* "RPC invocation (POST)": the definition of the RPCs is out of the scope of the
+  document, they may be defined in other YANG Data Models, and "duplicate-rule"
+  is given as an illustration. The input of an RPC acting on rules must provide
+  their rule IDs, and its output a status.
+* "RPC statements": "duplicate-rule" illustrates the use of RPCs, other RPCs may
+  be defined in other documents for specific traffic patterns.
+* The RPCs are now a section of their own ({{sec-rpcs}}), after "Management
+  messages": its introduction gathers the general rules on the RPCs, and "RPC
+  invocation (POST)" only describes the use of CoAP.
+* The tables of the management rules M1 to M4 are moved to an appendix
+  ({{sec-mgmt-rules-tables}}) and adapted to the management protocol stack:
+  DevIID ::1 and AppIID ::2, ports of the Device swapped in M3 and M4, Uri-Path
+  only in the requests, two Content-Formats for the requests, 2.04 Changed added
+  to the responses with a payload, and 4.03, 4.09 and 5.03 added to the
+  responses without payload. The description of M1 to M4 is clarified.
+* Acknowledgments: Claude was used to validate the protocol used to modify the
+  SoR.
 * "Restart of an end" ({{sec-restart}}) added: the rules and their status should
   be kept in a stable memory, the Guard period of an `invalid` rule restarts
   after a restart, and the freshness of the management requests is checked when
@@ -1598,5 +1616,6 @@ EUREKA CELTIC-NEXT project CYPRESS.
 This work has been supported by the SCHC Chair from IMT Atlantique and Afnic.
 
 The authors also thank Claude (Anthropic) for rewriting parts of this document
-in more correct English and for checking its consistency with the YANG data
-model.
+in more correct English, for checking its consistency with the YANG data model,
+and for validating the protocol used to modify the SoR (see {{sec-rule-status}})
+with a systematic exploration of a bounded model of this protocol.
