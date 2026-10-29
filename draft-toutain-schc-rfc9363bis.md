@@ -2674,8 +2674,9 @@ module ietf-schc {
        other actions allow an intermediate entity, typically the
        SCHC gateway, to process the packet locally instead.";
     reference
-      "draft-barthel-lpwan-oam-schc-05 OAM for LPWAN using Static
-                Context Header Compression (SCHC) (see Section 5)";
+      "draft-ietf-schc-icmpv6-compression Static Context Header
+                Compression (SCHC) for the Internet Control Message
+                Protocol (ICMPv6) (see Section 7)";
   }
 
   identity action-forward {
@@ -2695,8 +2696,9 @@ module ietf-schc {
        processed locally by a ping proxy, which answers the ICMPv6
        Echo Request on behalf of the Device.";
     reference
-      "draft-barthel-lpwan-oam-schc-05 OAM for LPWAN using Static
-                Context Header Compression (SCHC) (see Section 5)";
+      "draft-ietf-schc-icmpv6-compression Static Context Header
+                Compression (SCHC) for the Internet Control Message
+                Protocol (ICMPv6) (see Section 7)";
   }
 
   typedef action-type {
@@ -3422,6 +3424,9 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
   `rule-status`, and the status of the management Rules.
 * YANG Data Model: the `duplicate-rule` RPC is removed; it is defined in
   draft-toutain-schc-coreconf-management.
+* YANG Data Model: `action-base-type` and `action-proxy-ping` reference
+  Section 7 of draft-ietf-schc-icmpv6-compression instead of
+  draft-barthel-lpwan-oam-schc.
 * Example: the compression Rule uses the `entry-universal` list, with an
   `entry-index` per entry; the line breaks inside the `fragmentation-mode`
   value, which made the RFC 9363 example invalid, are moved inside the start

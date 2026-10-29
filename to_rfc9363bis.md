@@ -35,9 +35,11 @@ To add to the normative references:
 
 To add to the informative references: ~~RFC 4443 (ICMPv6)~~, RFC 7641
 (Observe), RFC 7959 (Block), RFC 8407 (YANG guidelines),
-~~draft-ietf-core-oscore-key-update (KUDOS)~~, draft-barthel-lpwan-oam-schc
+~~draft-ietf-core-oscore-key-update (KUDOS)~~, ~~draft-barthel-lpwan-oam-schc
 (Action: not needed, the Action is defined in
-draft-ietf-schc-icmpv6-compression), ~~draft-toutain-schc-sid-allocation,
+draft-ietf-schc-icmpv6-compression)~~ (the module now references
+draft-ietf-schc-icmpv6-compression instead, 2026-10-29),
+~~draft-toutain-schc-sid-allocation,
 draft-toutain-core-private-sid-translation~~ (out of scope: SIDs) and
 ~~draft-toutain-schc-coreconf-management (rule management)~~.
 
