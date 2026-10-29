@@ -56,7 +56,6 @@ normative:
   RFC8613:
   RFC8724:
   RFC8824:
-  RFC9441:
   RFC9595:
   I-D.ietf-schc-universal-option:
   I-D.ietf-schc-icmpv6-compression:
@@ -83,8 +82,7 @@ modify the parameters of some Rules.
 This document updates the SCHC data model defined in RFC 9363 to take into
 account the evolution of SCHC usages. It introduces a flexible way to describe
 protocol options, such as the CoAP options, and includes the identifiers needed
-for the compression of ICMPv6, the SCHC Compound ACK, and features for the
-management of the Rules.
+for the compression of ICMPv6 and features for the management of the Rules.
 
 --- middle
 
@@ -113,10 +111,6 @@ an augmentation such as the one defined in
   previous one is deprecated.
 * The module keeps its name and namespace, so the SID range already allocated
   to `ietf-schc` by IANA can be used for this revision {{RFC9595}}.
-
-This document also directly integrates the augmentation proposed for the SCHC
-Compound ACK in {{RFC9441}}: the `ietf-schc-compound-ack` module is merged into
-the `ietf-schc` module.
 
 The goal of this document is to update the formal description of the Rules, to
 extend SCHC to new environments, and to offer:
@@ -243,8 +237,7 @@ into subfields.
 {{I-D.ietf-schc-icmpv6-compression}} specifies fields for ICMPv6 {{RFC4443}}.
 
 SCHC fragmentation requires a set of common parameters that are included in a
-Rule. These parameters are defined in {{RFC8724}}, and extended in {{RFC9441}}
-for the SCHC Compound ACK.
+Rule. These parameters are defined in {{RFC8724}}.
 
 The YANG data model enables the compression, the fragmentation, and the
 management selection using the feature statement.
@@ -451,9 +444,10 @@ behaves as in {{RFC8724}}. {{I-D.ietf-schc-icmpv6-compression}} defines
 
 ### Action Arguments {#action-arguments}
 
-They are viewed as a list, built with a `tv-struct` (see {{target_value}}), and
-carried in the `action-value` list of the Rule. `action-forward` takes no
-argument.
+The Action is carried in the `action` leaf of the compression Rule, and its
+arguments in the `action-value` list of the same Rule. The arguments are viewed
+as a list, built with a `tv-struct` (see {{target_value}}). `action-forward`
+takes no argument.
 
 ## Fragmentation Rule {#frag_types}
 
@@ -2337,7 +2331,7 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
 
 * Header: the document obsoletes RFC 9363, in the `schc` working group.
 * Abstract: the document is presented as an update of the SCHC data model
-  (protocol options, ICMPv6, Compound ACK, Rule management).
+  (protocol options, ICMPv6, Rule management).
 * Introduction: RFC 9363 is presented as a data model dedicated to LPWAN
   environments, where the Rules were mostly installed directly in the SCHC
   end-points. The goal becomes to update the formal description of the Rules
@@ -2347,15 +2341,12 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
   themselves (creation and deletion with CORECONF).
 * Introduction: why this document is a revision and not an augmentation of
   RFC 9363 (new key of the compression entries, reuse of the SID range).
-* Introduction: the `ietf-schc-compound-ack` module of RFC 9441 is merged into
-  `ietf-schc`.
 * Terminology: new terms Action, Entry Index, Guard Period, Management Rule,
   Rule Status, Space ID, and Universal Option.
 * SCHC Rules: fields are also specified by the Universal Option and ICMPv6
   compression documents.
 * SCHC Rules: the management can also be selected with a feature statement.
-* SCHC Rules: fields for the OSCORE Key Update (KUDOS), and fragmentation
-  parameters extended for the SCHC Compound ACK.
+* SCHC Rules: fields for the OSCORE Key Update (KUDOS).
 * New section "Convention for Space Identifier": options referenced by a
   Space ID and their option number (`space-id-base-type`, `space-id-coap`,
   `space-id-type`, common ancestor `space-field-id-base-type`), and
@@ -2369,7 +2360,7 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
 * Convention for Compression Decompression Actions: new CDAs
   `cda-compress-sent` and `cda-rev-compress-sent`.
 * New section "Convention for Action": `action-forward` is the default
-  Action, and the arguments are carried in `action-value`.
+  Action, carried in the `action` leaf, with its arguments in `action-value`.
 * Conventions for Field Length, Matching Operator, CDA, and Action: the new
   identities are listed, and their behavior is described in the documents
   that define them.

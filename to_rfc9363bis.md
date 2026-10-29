@@ -15,7 +15,7 @@ where the text and the YANG fragments can be taken from.
 * ~~docname: draft-ietf-schc-rfc9363bis-00 (or the name chosen by the WG),
   with "obsoletes: 9363". The workgroup becomes "schc" (lpwan is closed).~~
 * ~~Abstract: add a sentence listing the extensions (universal entries, new
-  Field IDs and functions, Action, compound ACK, rule management).~~
+  Field IDs and functions, Action, rule management).~~
 * ~~Add a "Changes from RFC 9363" section (or appendix), summarizing the items
   of this document.~~
 
@@ -26,7 +26,6 @@ To add to the normative references:
 * ~~RFC 7950 (YANG 1.1): already cited by RFC 9363 as informative; it becomes
   normative, since the deprecation rules of Section 11 are applied.~~
 * ~~RFC 9595 (YANG SID files), for the SID allocation.~~
-* ~~RFC 9441 (SCHC Compound ACK), whose YANG module is merged.~~
 * ~~draft-ietf-schc-universal-option~~, ~~draft-ietf-schc-8824-update~~ and
   ~~draft-ietf-schc-icmpv6-compression~~, which define the new Field IDs,
   functions, MOs and CDAs.
@@ -150,12 +149,9 @@ draft-ietf-schc-icmpv6-compression.
 
 ### 5.8 Fragmentation Rule (Section 4.10)
 
-* Section 4.10.4 (Acknowledgment Behavior): add the compound ACK of RFC 9441
-  (bis: Compound ACK): leaves "bitmap-format" (default "bitmap-RFC8724") and
-  "last-bitmap-compression" (default true) in the "ack-on-error" case;
-  identities "bitmap-format-base-type", "bitmap-RFC8724",
-  "bitmap-compound-ack"; typedef "bitmap-format-type". State that the
-  "ietf-schc-compound-ack" module of RFC 9441 is merged into "ietf-schc".
+* Compound ACK: not merged. The "ietf-schc-compound-ack" module of RFC 9441
+  stays an external module augmenting "ietf-schc"; no change in this
+  section.
 
 ## 6. Rule Definition (RFC 9363 Section 5)
 

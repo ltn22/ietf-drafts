@@ -144,7 +144,6 @@ module ietf-schc {
       "This version includes new developments in the SCHC architecture
        and RFCs published since the initial version of this module.
        It includes:
-       * Data model for Compound Ack as described in RFC9441
        * new Field IDs defined for CoAP OSCORE support as described
        in draft-ietf-schc-8824-update.
        * ICMPv6 FIDs defined in draft-ietf-schc-icmpv6.
@@ -155,9 +154,7 @@ module ietf-schc {
       ";
     reference
       "RFC 9363 A YANG Data Model for Static Context Header
-                Compression (SCHC)
-       RFC 9441  Static Context Header Compression (SCHC) 
-                Compound Acknowledgement (ACK)";
+                Compression (SCHC)";
   }
 
   revision 2023-03-01 {
@@ -1327,46 +1324,6 @@ module ietf-schc {
       "Define the type for RCS algorithm in Rules.";
   }
 
-  // --------- COMPOUND ACK TYPE DEFINITION ---------
-
-  identity bitmap-format-base-type {
-    description
-      "Define how the bitmap is formed in ACK messages. ";
-    reference
-       "RFC9441 Static Context Header Compression (SCHC)
-                 Compound Acknowledgement (ACK)";
-  }
-
-  identity bitmap-RFC8724 {
-    base bitmap-format-base-type;
-    description
-      "Bitmap by default as defined in RFC 8724.";
-    reference
-      "RFC 8724 SCHC: Generic Framework for Static Context Header
-                Compression and Fragmentation.
-       RFC9441 Static Context Header Compression (SCHC)
-                 Compound Acknowledgement (ACK)";
-  }
-
-  identity bitmap-compound-ack {
-    base bitmap-format-base-type;
-    description
-      "Compound ACK allows several bitmaps in an ACK message.";
-    reference
-       "RFC9441 Static Context Header Compression (SCHC)
-                 Compound Acknowledgement (ACK)";  }
-
-  typedef bitmap-format-type {
-    type identityref {
-      base bitmap-format-base-type;
-    }
-    description
-      "Type of bitmap used in Rules.";
-    reference
-       "RFC9441 Static Context Header Compression (SCHC)
-                 Compound Acknowledgement (ACK)";
-  }
-
   // --------  RULE ENTRY DEFINITION ------------
 
   grouping tv-struct {
@@ -2136,35 +2093,6 @@ module ietf-schc {
           description
             "Sender behavior to acknowledge, after All-0 or All-1 or
              when the LPWAN allows it.";
-        }
-
-        leaf bitmap-format {
-          when "derived-from-or-self(../fragmentation-mode,
-                            'fragmentation-mode-ack-on-error')";
-          type bitmap-format-type;
-          default "bitmap-RFC8724";
-          description
-            "How the bitmaps are included in the SCHC ACK message.
-             Defined in RFC 9441.";
-          reference
-            "RFC 9441 Static Context Header Compression (SCHC)
-                      Compound Acknowledgement (ACK)";
-        }
-
-        leaf last-bitmap-compression {
-          when "derived-from-or-self(../fragmentation-mode,
-                            'fragmentation-mode-ack-on-error')";
-          type boolean;
-          default "true";
-          description
-            "When true, the ultimate bitmap in the SCHC ACK message
-            can be compressed.  Default behavior from RFC 8724. 
-            Defined in RFC 9441.";
-          reference
-            "RFC 8724 SCHC: Generic Framework for Static Context Header
-                      Compression and Fragmentation.
-             RFC 9441 Static Context Header Compression (SCHC)
-                       Compound Acknowledgement (ACK)";
         }
       }
       description
