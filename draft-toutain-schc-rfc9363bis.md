@@ -247,15 +247,18 @@ The main updates of the YANG data model defined in {{RFC9363}} are:
 * Universal Options: an entry can reference a protocol option by a Space ID
   and its option number, and the per-option CoAP Field IDs are deprecated (see
   {{convention-for-space-identifier}}).
-* New identifiers: Field IDs for ICMPv6 and for the OSCORE and KUDOS subfields
-  (see {{convention-for-field-identifier}}), Field Length functions (see
+* New identifiers: Field IDs for ICMPv6 {{I-D.ietf-schc-icmpv6-compression}}
+  and for the OSCORE and KUDOS subfields (see
+  {{convention-for-field-identifier}}), Field Length functions (see
   {{convention-for-field-length}}), Matching Operators (see
   {{convention-for-matching-operator}}), and Compression Decompression Actions
   (see {{convention-for-compression-decompression-actions}}).
 * Action: a compression Rule can carry an Action, applied to the packets
-  matching it (see {{convention-for-action}}).
+  matching it {{I-D.ietf-schc-icmpv6-compression}} (see
+  {{convention-for-action}}).
 * Rule management: a new feature, a new Rule nature, a Guard period, and a
-  status for each Rule (see {{management-rule}} and {{yang-tree}}).
+  status for each Rule {{I-D.toutain-schc-coreconf-management}} (see
+  {{management-rule}} and {{yang-tree}}).
 
 ## Compression Rules {#comp_types}
 
@@ -3357,7 +3360,8 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
   identities are listed, and their behavior is described in the documents
   that define them.
 * New section "Main Updates from RFC 9363": main updates of the YANG data
-  model, with the sections describing them.
+  model, with the sections describing them and references to the ICMPv6
+  compression and CORECONF management documents.
 * YANG module: `fid-oscore-base-type`, not used as a base, is deprecated.
 * Compression Rule: the `compression-content` grouping is deprecated in favor
   of `compression-content-universal` (Universal Options, `entry-index` key,
