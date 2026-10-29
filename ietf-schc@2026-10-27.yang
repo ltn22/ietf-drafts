@@ -58,110 +58,41 @@ module ietf-schc {
 
   revision 2026-10-27 {
     description
-      "Add 'rule-status' to 'list rule', gated by 'if-feature
-       management', with the 'status-base-type' identity and its
-       'status-valid', 'status-candidate', 'status-invalid' and
-       'status-free' derived identities, and the 'status-type'
-       typedef. A Rule whose 'rule-status' is 'status-candidate'
-       has been created by management and is not usable until the
-       other end has validated it. Remove the 'duplicate-rule' RPC,
-       now defined in draft-toutain-schc-coreconf-management.";
-  }
-
-  revision 2026-09-22 {
-    description
-      "Wire the 'nature-management' Rule nature into the data
-       model: widen 'compression-content-universal''s
-       'entry-universal' must to accept 'nature-compression' or
-       'nature-management', instead of adding a separate, SID-
-       duplicating 'case management' for an identical structure;
-       widen 'case compression-universal''s if-feature to
-       'compression or management' accordingly; and move
-       'management-content' (the 'guard-period' timer) out of
-       'list rule' into a new top-level 'context' container, gated
-       by 'if-feature management', since it applies to the whole
-       SCHC context rather than to a single Rule.";
-  }
-
-  revision 2026-08-20 {
-    description
-      "Add kudos FID defined in draft-ietf-core-oscore-key-update.
-       Restore the twenty per-CoAP-option FIDs (fid-coap-option-*)
-       that had been removed in an earlier revision, marking them
-       'status deprecated' instead of deleting them, per RFC 7950
-       Section 11 ('Obsolete definitions MUST NOT be removed from
-       published modules') and RFC 8407 Section 4.7 (an object
-       SHOULD stay 'deprecated' for at least one year before moving
-       to 'obsolete'). They are superseded by Universal Options
-       (space-id-coap / universal-value). Rename the '-v2'
-       compression-rule-entry/compression-content/case suffix to
-       '-universal'. Fix the space-id-coap identity description and
-       reference, mistakenly copy-pasted from fid-ipv6-*. Deprecate
-       the
-       unused fid-oscore-base-type identity: it was never used as a
-       base by any other identity (the OSCORE suboption FIDs derive
-       directly from fid-coap-option), but it is published in
-       RFC 9363 and cannot be removed (RFC 7950, Section 11).";
-  }
-
-  revision 2026-05-07 {
-    description
-      "add two generic fid unused and payload to be used in any
-      protocol and for padding and payload definition.";
-  }
-
-  revision 2026-04-05 {
-    description
-      "Alternative: use choice/case to structurally distinguish
-       regular
-       fields (field-id only) from universal options (space-id +
-       mandatory
-       universal-value).";
-  }
-
-  revision 2026-02-24 {
-    description
-      "
-      - Add Management feature to support management of SCHC rules.
-      - Introduce RPCs to manage rules.";
-  }
-
-  revision 2026-01-12 {
-    description
-    "test module to unify universal option and regular entries:
-    - all options are identified with a space-id and an option-id.
-      For regular fields like fid-ipv6-version the space-id is set
-      to 0.
-    - the entries are identified by an index, reducing the keys to
-      a single element.
-    - introduction of a new function to define the length. This
-    option
-      takes an entry-index as parameter to refer to a field
-      indicating
-      length.
-      for instance fl-token-length is now equivalent to:
-      fl-length_byte(index) where index refers to an entry-index for
-      TKL field.";
-  }
-
-  revision 2025-11-24 {
-    description
-      "This version includes new developments in the SCHC
-       architecture
-       and RFCs published since the initial version of this module.
-       It includes:
-       * new Field IDs defined for CoAP OSCORE support as described
-       in draft-ietf-schc-8824-update.
-       * ICMPv6 FIDs defined in draft-ietf-schc-icmpv6.
-       * Universal options for CoAP and other protocols options
-       parsing
-         as described in draft-ietf-schc-universal-options.
-       * the coap-option FIDs are deprecated in favor of the more
-       generic
-         universal-option Field IDs.
-      ";
+      "This revision updates the data model of RFC 9363:
+       - Compression Rule entries: the 'entry-universal' list, keyed
+         by 'entry-index', replaces the 'entry' list. An entry
+         contains either a 'field-id' or a 'space-id' with its
+         'universal-value', and a 'field-length-value' leaf. The
+         'entry' list, the 'compression-content' and
+         'compression-rule-entry' groupings, and the 'compression'
+         case are deprecated.
+       - Universal Options: new 'space-field-id-base-type',
+         'space-id-base-type' and 'space-id-coap' identities, and
+         'space-field-id-type' and 'space-id-type' typedefs. The
+         per-option CoAP Field IDs and 'fid-oscore-base-type' are
+         deprecated.
+       - New Field IDs: OSCORE and KUDOS sub-fields, ICMPv6 fields,
+         'fid-unused' and 'fid-payload'.
+       - New Field Length functions: 'fl-length-bytes',
+         'fl-length-bits', 'fl-variable-bits' and 'fl-remaining'.
+       - New Matching Operators 'mo-rule-match' and
+         'mo-rev-rule-match', and Compression Decompression Actions
+         'cda-compress-sent' and 'cda-rev-compress-sent'.
+       - Action: 'action' leaf and 'action-value' list in the
+         compression Rule, 'action-type' typedef and
+         'action-base-type', 'action-forward' and
+         'action-proxy-ping' identities.
+       - Rule management: 'management' feature, 'nature-management'
+         nature, 'context' container with the 'guard-period' timer,
+         and 'rule-status' leaf with the 'status-type' typedef and
+         its identities.
+       - Constraints in 'entry-universal': 'field-length-value' is
+         required by 'fl-length-bytes' and 'fl-length-bits', and the
+         per-option CoAP Field IDs are rejected. The Target Value is
+         no longer required for 'cda-compress-sent' and
+         'cda-rev-compress-sent'.";
     reference
-      "RFC 9363 A YANG Data Model for Static Context Header
+      "RFC XXXX A YANG Data Model for Static Context Header
                 Compression (SCHC)";
   }
 
@@ -1808,7 +1739,9 @@ module ietf-schc {
     base nature-base-type;
     description
       "Identify a management Rule. Management Rules use the
-     compression Rule structure to operate on the SCHC Context.";
+       compression Rule structure to operate on the SCHC Context.
+       Management Rules are always valid: their status is always
+       'status-valid'.";
   /* Reference to be added when the Rule Management specification
      is available. */
   }
@@ -1821,7 +1754,9 @@ module ietf-schc {
   identity status-valid {
     base status-base-type;
     description
-      "The Rule belongs to the Set of Rules and can be used.";
+      "The Rule belongs to the Set of Rules and can be used. Only
+       the Rules with this status can be used for compression,
+       decompression, fragmentation, and reassembly.";
   }
 
   identity status-candidate {
@@ -1850,7 +1785,9 @@ module ietf-schc {
       "The RuleID can be used to create a new Rule. When the guard
        period of a deleted Rule has elapsed, the Rule is either kept
        in the Set of Rules with this status, or removed from it. A
-       RuleID absent from the Set of Rules is also free.";
+       RuleID absent from the Set of Rules is also free. A Rule with
+       this status is processed as if it did not exist in the Set
+       of Rules.";
   }
 
   typedef status-type {
@@ -1907,12 +1844,12 @@ module ietf-schc {
   grouping compression-content {
     status deprecated;
     list entry {
-      status deprecated;
       must "derived-from-or-self(../rule-nature,
                                         'nature-compression')" {
         error-message "Rule nature must be compression";
       }
       key "field-id field-position direction-indicator";
+      status deprecated;
 
       uses compression-rule-entry {
         status deprecated;
@@ -2185,6 +2122,9 @@ module ietf-schc {
        procedure.";
 
     container guard-period {
+      description
+        "Duration of the Guard period, during which a deleted RuleID
+         MUST NOT be reused. It applies to all the Rules.";
       leaf ticks-duration {
         type uint8;
         default "20";
@@ -2259,7 +2199,11 @@ module ietf-schc {
            not usable until the other end has validated it. A Rule
            with the value 'status-invalid' has been deleted and
            stays in this status during the guard period. A Rule
-           without this leaf is considered 'status-valid'.";
+           without this leaf is considered 'status-valid'.
+           The value is a local view of the state of the management
+           protocol machine of the node. It is managed locally by
+           the node, and any value sent by the other end is
+           overwritten.";
       }
       choice nature {
         case fragmentation {
@@ -2267,8 +2211,8 @@ module ietf-schc {
           uses fragmentation-content;
         }
         case compression {
-          status deprecated;
           if-feature "compression";
+          status deprecated;
           uses compression-content {
             status deprecated;
           }

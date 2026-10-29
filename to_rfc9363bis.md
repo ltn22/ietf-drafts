@@ -201,10 +201,10 @@ Rule Definition:
 
 * ~~Replace the module with ietf-schc@2026-10-27.~~ Copied in the draft (kept
   in sync with the .yang file).
-* Replace the intermediate revision statements of the working copy
+* ~~Replace the intermediate revision statements of the working copy
   (2025-11-24 to 2026-10-27, never published) with a single revision
   statement for the new RFC, describing all the changes, followed by the
-  2023-03-01 revision of RFC 9363.
+  2023-03-01 revision of RFC 9363.~~
 * ~~Fix "fid-oscore-base-type" (see 5.3).~~
 * Update the module description (RFC number, new features).
 
