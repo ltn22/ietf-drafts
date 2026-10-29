@@ -44,7 +44,7 @@ author:
         org: Orange
         email: marion.dumay@orange.com
       - name: Samar Sirohi
-        org: Institut MINES TELECOM; IMT Atlantique
+        org: IMT Atlantique
         street: 2 rue de la Chataigneraie CS 17607
         city: Cesson-Sevigne Cedex
         code: 35576
@@ -105,7 +105,27 @@ specifies the compression Rules dedicated to the management traffic itself. They
 make control and configuration exchanges more efficient and are distinct from
 the compression applied to regular application data. Finally, it defines the
 "ietf-schc-basic-mgmt" YANG module ({{sec-yang-module}}), which provides an RPC
-to create a Rule from an existing one and an RPC to reset the Set of Rules.
+to derive a Rule from an existing one and an RPC to reset the Set of Rules.
+
+# Terminology
+
+This document uses the following terms from {{RFC8724}}:
+
+C/D:
+: SCHC Compressor/Decompressor, or SCHC Compression/Decompression.
+
+F/R:
+: SCHC Fragmenter/Reassembler, or SCHC Fragmentation/Reassembly.
+
+It also uses the following term, in addition to those defined in
+{{RFC8724}}:
+
+Overlapping rule IDs:
+: Two different rule IDs overlap when one of them is a prefix of the other
+  (e.g. 110 and 110001): a SCHC packet built with the longer rule ID also
+  starts with the bits of the shorter one, so the two could not be parsed
+  without ambiguity. A new rule ID MUST NOT equal, or overlap, the rule ID
+  of an existing `origin`, `valid`, `candidate`, or `invalid` rule.
 
 # Applicability statement
 
@@ -163,7 +183,7 @@ connection) or directly using OSCORE or DTLS.
 Management requests MUST be protected against packet loss. It is RECOMMENDED to
 use CONfirmable requests and no Token. If the management request is too large
 regarding the MTU, SCHC Fragmentation SHOULD be used instead of the Block
-option. As shown in figure {{Fig-SCHCManagement}} fragmentation can be common to
+option. As shown in {{Fig-SCHCManagement}} fragmentation can be common to
 Management rules and other rules.
 
 
@@ -184,18 +204,19 @@ deletion.
 A rule can have several statuses (the state machine is summarized in
 {{sec-fsm}}):
 
-* `origin`: the rule belongs to the initial SoR, provisioned before the start of
-  the SCHC instance, as the management rules. It is used for C/D and F/R as a
-  `valid` rule, and behaves as a `valid` rule in the procedures below, except
-  that it cannot be modified or deleted: a deletion whose target is an `origin`
-  rule is refused with 4.03 Forbidden. It can be duplicated (see
-  {{sec-duplicate-rule-rpc}}), except the management rules. The `origin` status
-  is only set by provisioning, never by management, and the `origin` rules are
-  the only ones kept when the SoR is reset (see {{sec-reset-rpc}}). Since they
-  never change, they are always identical on both ends.
-* `valid`: the rule belongs to the SoR and can be used for C/D and F/R: it can
-  be selected for compression or fragmentation, and the SCHC PDUs carrying its
-  rule ID are decompressed or reassembled with it.
+* `origin`: the rule belongs to the initial SoR, provisioned before the start
+  of the SCHC instance, including the management rules. It is used for C/D
+  and F/R as a `valid` rule, and behaves as a `valid` rule in the procedures
+  below, except that it cannot be modified or deleted: a deletion whose
+  target is an `origin` rule is refused with 4.03 Forbidden. It can be
+  duplicated (see {{sec-duplicate-rule-rpc}}), except the management rules.
+  The `origin` status is only set by provisioning, never by management, and
+  the `origin` rules are the only ones kept when the SoR is reset (see
+  {{sec-reset-rpc}}). Since they never change, they are always identical on
+  both ends.
+* `valid`: the rule belongs to the SoR and can be selected for compression or
+  fragmentation, and the SCHC PDUs carrying its rule ID are decompressed or
+  reassembled with it.
 * `candidate`: the rule has been created, but the other end has not validated it
   yet. A SCHC PDU MUST NOT be generated with a `candidate` rule, neither for C/D
   nor for F/R. A `candidate` rule becomes `valid` either if the management
@@ -221,7 +242,7 @@ A rule can have several statuses (the state machine is summarized in
 ~~~ aasvg
               A                            B
   X valid     |                            | X valid
-              |               /------------|  SCHC PDU (X)
+              |  delete       /------------|  SCHC PDU (X)
   X invalid   |==============/============>| X invalid
               |<============/==============|---
            ---|            /      Ack      | |
@@ -231,6 +252,8 @@ A rule can have several statuses (the state machine is summarized in
             v | dropped                    | v
            ---|                            |---
   X free      |                            | X free
+              /                            /
+              /                            /
               |        create Rule X       |
   X candidate |===========================>| X valid
               |                            | 
@@ -269,9 +292,9 @@ PDU is accepted and decoded, and X becomes `valid` in A.
               A                            B
  X free       |
  X candidate  |===========================>| X valid
-              |         X==================|
-              |                            |   
-   X valid    |<---------------------------|   
+            | |         X==================|
+      Timer | |                            |   
+   X valid  * |<---------------------------|   
               |               X            | 
               |                            | 
 
@@ -283,7 +306,9 @@ PDU is accepted and decoded, and X becomes `valid` in A.
 The acknowledgement of a creation may be lost without a SCHC PDU using the new
 rule being sent, or the CoAP exchange may be abandoned by A. Then A cannot know
 if B has created the rule, and the rule stays `candidate` on A. To recover, A
-repeats the creation.
+repeats the creation. If B does not immediately emit a SCHC PDU using the new
+rule ID, A has no such indication either, and relies instead on the timer
+shown in {{Fig-Rule-creation}} expiring before repeating the creation.
 
 SCHC rule IDs do not have a fixed length. Two different rule IDs overlap when
 one of them is a prefix of the other: for instance, the rule IDs 110 and 110001
@@ -317,6 +342,30 @@ either refused during the Guard period of B, or accepted before the deletion,
 which then removes it. An answer is taken into account only if the rule is
 still the `candidate` rule created by the request. Otherwise (the rule has been
 validated by a SCHC PDU, replaced or deleted in the meantime), it is ignored.
+{{Fig-Rule-conflict}} illustrates this with a retransmitted copy of the
+creation that arrives late, after A has already deleted its `candidate` rule.
+
+~~~ aasvg
+              A                             B
+              |- - +                        |
+              |    :                        |
+ X candidate  |=========create(X)==========>|
+              |    :                        |
+              |    (a retransmitted copy    |
+              |     is still in flight)     |
+              |<=======4.09 Conflict========|
+ X invalid    |=========delete(X)==========>| X invalid
+            | |    :                        | |
+      Guard | |    :                        | |
+            | |    :   retransmitted        | |
+            | |    :     create(X)          | |
+            | |    + - - - - - - - - - - - >| |
+            | |                             | | refused: X
+            | |                             | | still guarded
+            v |<============Ack=============|  v
+ X free       |                             | X free
+~~~
+{: #Fig-Rule-conflict title='Late retransmitted creation refused after the candidate rule is deleted'}
 
 The initiator keeps the rule `candidate` and repeats the creation, with an
 increasing delay, until it receives an answer. The creation stops as soon as the
@@ -360,8 +409,8 @@ create the rule with the new content with another rule ID.
 
 ### Simultaneous creation {#sec-simultaneous-creation}
 
-Both ends can create rules. They could choose the same rule ID at the same time,
-or two rule IDs where one is the prefix of the other. To avoid it, the rule ID
+Both ends can create rules. They could choose the same rule ID at the same
+time, or two rule IDs where one overlaps the other. To avoid it, the rule ID
 space SHOULD be shared between both ends:
 
 * the rule IDs of the rules created by the Core start with a bit set to 0;
@@ -446,9 +495,10 @@ the rule before deleting it, or the deletion may be a late copy of an older one;
 in both cases, the rule can be created again after the Guard period.
 
 Management requests MUST be processed only once, as specified in {{RFC7252}},
-Section 4.5. The relaxation allowed by this section for idempotent requests does
-not apply: a creation or a deletion received again after the rule has been
-deleted and created again is not idempotent.
+Section 4.5. That section lets a server redo an idempotent request instead of
+just resending the same answer when it sees a duplicate; this does not apply
+here, since redoing a creation or a deletion after the rule has since been
+deleted and created again would not give the same result.
 
 ## Guard period computation {#sec-guard-computation}
 
@@ -468,6 +518,30 @@ tA (A sends the request) and received by B at time tB, with tB >= tA:
   and starts its Guard period at tA'. A Guard period of A longer than L is
   therefore enough, since tA'+L >= tB+L.
 
+A MUST start its Guard period when it receives the acknowledgement of the
+deletion, not when it sends the deletion request: the request may be
+retransmitted during MAX_TRANSMIT_SPAN ({{RFC7252}}) before B receives it and
+stops using the rule, so starting the Guard period any earlier could let a
+stale PDU from B arrive after it has already ended.
+
+{{Fig-Guard-timing}} shows these two arguments on a timeline (not to scale).
+
+~~~ aasvg
+---+--------+-----------+-------------------------------------------------
+   tA       tB          tA'
+
+            <-------------->
+              Guard(B), >= L, starts when B gets delete(X)
+                  ^
+    A's last PDU(X)
+
+                        <-------------->
+                          Guard(A), >= L, starts when A gets the Ack
+                           ^
+             B's last PDU(X)
+~~~
+{: #Fig-Guard-timing title='Why a Guard period of L suffices on each end'}
+
 Both ends then use the same Guard period
 
     G >= L
@@ -482,14 +556,6 @@ interplanetary link. The CoAP transmission parameters are configured accordingly
 ({{RFC7252}}, Section 4.8.1), with a MAX_LATENCY of at least L, and the values
 derived from them, such as MAX_TRANSMIT_SPAN and EXCHANGE_LIFETIME, are the ones
 used in this document.
-
-Starting the Guard period of A when it sends the request would not be
-sufficient: the request may be retransmitted during MAX_TRANSMIT_SPAN
-({{RFC7252}}) before B receives it, and B keeps generating PDUs with X during
-all that time. A stale PDU would then arrive after the Guard period of A,
-possibly when X has been created again with another content: A in the
-`candidate` state would validate the new rule on this stale PDU, and would
-decode the following PDUs with the wrong rule.
 
 When both ends delete the same rule at the same time, each end keeps sending its
 deletion request until it is acknowledged, possibly after the Guard period of
@@ -511,6 +577,10 @@ during MAX_TRANSMIT_SPAN ({{RFC7252}}), while the deduplication prevents these
 copies from restarting the Guard period of B. To avoid such a refusal, a rule ID
 SHOULD NOT be used for a new rule before MAX_TRANSMIT_SPAN + 2L after the end of
 its Guard period: the Guard period of the other end is then over too.
+
+This document recommends not reusing a deleted rule ID immediately: the Guard
+period then becomes transparent to management, since no new rule is ever
+confused with a stale PDU of the deleted one.
 
 ## Restart of a node {#sec-restart}
 
