@@ -64,7 +64,8 @@ module ietf-schc {
        'status-free' derived identities, and the 'status-type'
        typedef. A Rule whose 'rule-status' is 'status-candidate'
        has been created by management and is not usable until the
-       other end has validated it.";
+       other end has validated it. Remove the 'duplicate-rule' RPC,
+       now defined in draft-toutain-schc-coreconf-management.";
   }
 
   revision 2026-09-22 {
@@ -95,7 +96,8 @@ module ietf-schc {
        (space-id-coap / universal-value). Rename the '-v2'
        compression-rule-entry/compression-content/case suffix to
        '-universal'. Fix the space-id-coap identity description and
-       reference, mistakenly copy-pasted from fid-ipv6-*. Deprecate the
+       reference, mistakenly copy-pasted from fid-ipv6-*. Deprecate
+       the
        unused fid-oscore-base-type identity: it was never used as a
        base by any other identity (the OSCORE suboption FIDs derive
        directly from fid-coap-option), but it is published in
@@ -110,8 +112,10 @@ module ietf-schc {
 
   revision 2026-04-05 {
     description
-      "Alternative: use choice/case to structurally distinguish regular
-       fields (field-id only) from universal options (space-id + mandatory
+      "Alternative: use choice/case to structurally distinguish
+       regular
+       fields (field-id only) from universal options (space-id +
+       mandatory
        universal-value).";
   }
 
@@ -123,32 +127,37 @@ module ietf-schc {
   }
 
   revision 2026-01-12 {
-    description 
+    description
     "test module to unify universal option and regular entries:
     - all options are identified with a space-id and an option-id.
-      For regular fields like fid-ipv6-version the space-id is set 
+      For regular fields like fid-ipv6-version the space-id is set
       to 0.
     - the entries are identified by an index, reducing the keys to
       a single element.
-    - introduction of a new function to define the length. This option
-      takes an entry-index as parameter to refer to a field indicating
+    - introduction of a new function to define the length. This
+    option
+      takes an entry-index as parameter to refer to a field
+      indicating
       length.
       for instance fl-token-length is now equivalent to:
-      fl-length_byte(index) where index refers to an entry-index for 
+      fl-length_byte(index) where index refers to an entry-index for
       TKL field.";
   }
 
   revision 2025-11-24 {
     description
-      "This version includes new developments in the SCHC architecture
+      "This version includes new developments in the SCHC
+       architecture
        and RFCs published since the initial version of this module.
        It includes:
        * new Field IDs defined for CoAP OSCORE support as described
        in draft-ietf-schc-8824-update.
        * ICMPv6 FIDs defined in draft-ietf-schc-icmpv6.
-       * Universal options for CoAP and other protocols options parsing
+       * Universal options for CoAP and other protocols options
+       parsing
          as described in draft-ietf-schc-universal-options.
-       * the coap-option FIDs are deprecated in favor of the more generic
+       * the coap-option FIDs are deprecated in favor of the more
+       generic
          universal-option Field IDs.
       ";
     reference
@@ -205,7 +214,8 @@ module ietf-schc {
   identity fid-payload {
     base fid-base-type;
     description
-      "Payload field in any protocol. This field contains the remaining 
+      "Payload field in any protocol. This field contains the
+       remaining
        bytes after the header fields.";
   }
 
@@ -677,7 +687,8 @@ module ietf-schc {
    identity fid-coap-option-oscore-flags-flagbits {
     base fid-coap-option-oscore-flags;
     description
-      "First 5 bits of the OSCORE flags field forming flags subfield.";
+      "First 5 bits of the OSCORE flags field forming flags
+       subfield.";
     reference
       "RFC 8824 Static Context Header Compression (SCHC) for the
                 Constrained Application Protocol (CoAP) (see
@@ -687,7 +698,7 @@ module ietf-schc {
   identity fid-coap-option-oscore-flags-n {
     base fid-coap-option-oscore-flags;
     description
-      "last 3 bits of the OSCORE flags field giving the length 
+      "last 3 bits of the OSCORE flags field giving the length
       of Partial IV.";
     reference
       "RFC 8824 Static Context Header Compression (SCHC) for the
@@ -729,7 +740,7 @@ module ietf-schc {
   identity fid-coap-option-kudos-x {
     base fid-coap-option;
     description
-      "x field contained in the kudos option defined in 
+      "x field contained in the kudos option defined in
       draft-ietf-core-oscore-key-update.";
     reference
       "draft-ietf-core-oscore-key-update";
@@ -738,7 +749,7 @@ module ietf-schc {
   identity fid-coap-option-kudos-x-flagbits {
     base fid-coap-option-kudos-x;
     description
-      "4 first bits of the x field in the kudos option defined in 
+      "4 first bits of the x field in the kudos option defined in
       draft-ietf-core-oscore-key-update.";
     reference
       "draft-ietf-core-oscore-key-update";
@@ -747,7 +758,7 @@ module ietf-schc {
   identity fid-coap-option-kudos-x-m {
     base fid-coap-option-kudos-x;
     description
-      "4 last bits of the x field in the kudos option defined in 
+      "4 last bits of the x field in the kudos option defined in
       draft-ietf-core-oscore-key-update.";
     reference
       "draft-ietf-core-oscore-key-update";
@@ -771,7 +782,7 @@ module ietf-schc {
                  for the Internet Protocol Version 6 (IPv6)
                  Specification";
  }
- 
+
   identity fid-icmpv6-type {
     base fid-icmpv6-base-type;
     description
@@ -867,7 +878,8 @@ module ietf-schc {
     description
       "Residue length in bits is sent as defined for CoAP.";
     reference
-      "NOT YET DEFINED IN RFCs. This function is a generalization of fl-variable to support bit-level length definition.";
+      "NOT YET DEFINED IN RFCs. This function is a generalization of
+       fl-variable to support bit-level length definition.";
   }
 
 
@@ -884,23 +896,26 @@ module ietf-schc {
   identity fl-length-bytes {
     base fl-base-type;
 
-    description "This function return the length a field 
-    by its index in bytes. This is a generalation of fl-token-length.";
+    description "This function return the length a field
+    by its index in bytes. This is a generalation of
+    fl-token-length.";
   }
 
   identity fl-length-bits {
     base fl-base-type;
 
-    description "This function return the length in bits of a field 
+    description "This function return the length in bits of a field
     by its index in bits. ";
   }
 
   identity fl-remaining {
     base fl-base-type;
-    
+
     description
-      "Field length is not explicitly carried in the Compression Residue.
-      This function is used for a field that extends to the end of the
+      "Field length is not explicitly carried in the Compression
+       Residue.
+      This function is used for a field that extends to the end of
+      the
       SCHC packet, such as a trailing payload.";
 }
 
@@ -966,7 +981,7 @@ module ietf-schc {
                 Header Compression and Fragmentation (see
                 Section 7.3)";
   }
-  
+
 
   identity mo-ignore {
     base mo-base-type;
@@ -1127,7 +1142,8 @@ module ietf-schc {
       base fid-base-type;
     }
     description
-      "Field ID type for regular protocol fields (IPv6, UDP, CoAP, etc.).
+      "Field ID type for regular protocol fields (IPv6, UDP, CoAP,
+       etc.).
        Used in the regular-field case of compression-rule-entry.";
   }
 
@@ -1136,7 +1152,8 @@ module ietf-schc {
       base space-id-base-type;
     }
     description
-      "Space ID type for universal option spaces (CoAP options, etc.).
+      "Space ID type for universal option spaces (CoAP options,
+       etc.).
        Used in the universal-option case of compression-rule-entry.";
   }
 
@@ -1381,7 +1398,8 @@ module ietf-schc {
        - Comp./Decomp. Action: the compression or decompression
          action and optional parameters
 
-       Deprecated in favor of 'compression-rule-entry-universal', which
+       Deprecated in favor of 'compression-rule-entry-universal',
+       which
        adds support for Universal Options.";
     reference
       "RFC 9363 A YANG Data Model for Static Context Header
@@ -1474,7 +1492,9 @@ module ietf-schc {
                 derived-from-or-self(., 'cda-value-sent') or
                 derived-from-or-self(., 'cda-compute') or
                 derived-from-or-self(., 'cda-appiid') or
-                derived-from-or-self(., 'cda-deviid')" {
+                derived-from-or-self(., 'cda-deviid') or
+                derived-from-or-self(., 'cda-compress-sent') or
+                derived-from-or-self(., 'cda-rev-compress-sent')" {
         error-message
           "cda-not-sent, cda-lsb, and cda-mapping-sent need
            target-value";
@@ -1506,9 +1526,10 @@ module ietf-schc {
 
        An entry in a compression Rule is composed of 7 elements:
        - entry-index: position in the rule.
-       - space field ID: the identityref of a specific field or 
+       - space field ID: the identityref of a specific field or
          space ID followed by an universal value.
-       - universal-value: the value associated to the space field ID to identify
+       - universal-value: the value associated to the space field ID
+       to identify
          a specific field in the space. For regular fields, this
          value is 0 and the space field ID is the field ID. For
          universal options, the space field ID identifies the type
@@ -1530,20 +1551,25 @@ module ietf-schc {
     leaf entry-index {
       type uint16;
 
-      description 
-        "Sequential position of the entry in the user-ordered Rule list,
+      description
+        "Sequential position of the entry in the user-ordered Rule
+         list,
          starting at 0.";
     }
 
     choice field-or-space {
       mandatory true;
       description
-        "Distinguishes a regular protocol field from a universal option.
+        "Distinguishes a regular protocol field from a universal
+         option.
          Exactly one case must be present:
-         - regular-field: a standard protocol field identified by a field ID
+         - regular-field: a standard protocol field identified by a
+         field ID
            (e.g., fid-ipv6-version, fid-udp-dev-port).
-         - universal-option: a generic option identified by a space ID
-           (e.g., space-id-coap) plus a numeric option value (e.g., the
+         - universal-option: a generic option identified by a space
+         ID
+           (e.g., space-id-coap) plus a numeric option value (e.g.,
+           the
            CoAP option number).";
 
       case regular-field {
@@ -1552,6 +1578,32 @@ module ietf-schc {
            No universal-value is needed.";
         leaf field-id {
           type schc:fid-type;
+          must "not(
+          derived-from-or-self(.,'fid-coap-option-if-match') or
+          derived-from-or-self(.,'fid-coap-option-uri-host') or
+          derived-from-or-self(.,'fid-coap-option-etag') or
+          derived-from-or-self(.,'fid-coap-option-if-none-match') or
+          derived-from-or-self(.,'fid-coap-option-observe') or
+          derived-from-or-self(.,'fid-coap-option-uri-port') or
+          derived-from-or-self(.,'fid-coap-option-location-path') or
+          derived-from-or-self(.,'fid-coap-option-uri-path') or
+          derived-from-or-self(.,'fid-coap-option-content-format') or
+          derived-from-or-self(.,'fid-coap-option-max-age') or
+          derived-from-or-self(.,'fid-coap-option-uri-query') or
+          derived-from-or-self(.,'fid-coap-option-accept') or
+          derived-from-or-self(.,'fid-coap-option-location-query') or
+          derived-from-or-self(.,'fid-coap-option-block2') or
+          derived-from-or-self(.,'fid-coap-option-block1') or
+          derived-from-or-self(.,'fid-coap-option-size2') or
+          derived-from-or-self(.,'fid-coap-option-proxy-uri') or
+          derived-from-or-self(.,'fid-coap-option-proxy-scheme') or
+          derived-from-or-self(.,'fid-coap-option-size1') or
+          derived-from-or-self(.,'fid-coap-option-no-response'))" {
+            error-message
+              "Deprecated per-option CoAP Field IDs must not be used
+               in entry-universal; use space-id-coap and the option
+               number.";
+          }
           mandatory true;
           description
             "Field ID of a regular protocol field.";
@@ -1560,7 +1612,8 @@ module ietf-schc {
 
       case universal-option {
         description
-          "The entry refers to a universal option within a given space.
+          "The entry refers to a universal option within a given
+           space.
            Both space-id and universal-value are required.";
         leaf space-id {
           type schc:space-id-type;
@@ -1573,7 +1626,8 @@ module ietf-schc {
           type uint64;
           mandatory true;
           description
-            "Numeric value identifying the specific option within the space
+            "Numeric value identifying the specific option within the
+             space
              (e.g., the CoAP option number).";
         }
       } // case universal-option
@@ -1584,6 +1638,13 @@ module ietf-schc {
       type uint8;
       type schc:fl-type;
         }
+      must "not(derived-from-or-self(., 'fl-length-bytes') or
+                 derived-from-or-self(., 'fl-length-bits')) or
+            ../field-length-value" {
+        error-message
+          "fl-length-bytes and fl-length-bits need
+           field-length-value";
+      }
       mandatory true;
       description
         "Field Length, expressed in number of bits if the length is
@@ -1593,11 +1654,11 @@ module ietf-schc {
     leaf field-length-value {
       type uint16;
 
-      description 
+      description
       "Argument used by Field Length functions. For
       fl-length-bytes and fl-length-bits, this value is the
       entry-index of the Rule entry whose numerical field value
-      specifies the length.";    
+      specifies the length.";
       }
     leaf field-position {
       type uint8;
@@ -1669,7 +1730,9 @@ module ietf-schc {
                 derived-from-or-self(., 'cda-value-sent') or
                 derived-from-or-self(., 'cda-compute') or
                 derived-from-or-self(., 'cda-appiid') or
-                derived-from-or-self(., 'cda-deviid')" {
+                derived-from-or-self(., 'cda-deviid') or
+                derived-from-or-self(., 'cda-compress-sent') or
+                derived-from-or-self(., 'cda-rev-compress-sent')" {
         error-message
           "cda-not-sent, cda-lsb, and cda-mapping-sent need
            target-value";
@@ -1910,7 +1973,8 @@ module ietf-schc {
 
     description
       "Define a compression Rule composed of a list of entries,
-       using the Universal-Option-aware 'compression-rule-entry-universal'.";
+       using the Universal-Option-aware
+       'compression-rule-entry-universal'.";
     reference
       "RFC 8724 SCHC: Generic Framework for Static Context Header
                 Compression and Fragmentation";
@@ -2117,7 +2181,8 @@ module ietf-schc {
 
   grouping management-content {
     description
-      "This group contains parameters to control management procedure.";
+      "This group contains parameters to control management
+       procedure.";
 
     container guard-period {
       leaf ticks-duration {
@@ -2227,56 +2292,4 @@ module ietf-schc {
       "RFC 8724 SCHC: Generic Framework for Static Context Header
                 Compression and Fragmentation";
   }
-
-
-
-    rpc duplicate-rule {
-        input {
-          container from {
-            uses schc:rule-id-type;
-            description 
-              "Source Rule ID";
-          }
-          container to {
-            uses schc:rule-id-type;
-            description
-              "Destination Rule ID";
-          }
-          leaf ipatch-sequence {
-            type binary;
-
-            description 
-              "CBOR sequence for an CORECONF iPatch used to modify the 
-               newly created Rule.
-               This parameter is optional, and set by default to 0xF6 (CBOR null)";
-          }
-        }
-        output {
-          leaf status {
-            type enumeration {
-              enum success-with-validation {
-                value 0;
-              }
-              enum success-not-validated {
-                value 1;
-              }
-              enum to-rule-already-exists {
-                value -1;
-              }
-              enum from-rule-not-found {
-                value -2;
-              }
-              enum invalid-ipatch {
-                value -3;
-              }
-            }
-            description 
-              "Return the status of the RPC. TO BE DEFINED MORE PRECISELY";
-          }
-        }
-        description 
-          "This RPC duplicate a rule, from a existing one given in leaf 'from' to a new
-          non existing rule defined by 'to'. The content of the new rule may be updated
-          with a iPatch, where the CORECONF payload contained in 'ipatch-sequence'.";
-      }
 }

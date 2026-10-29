@@ -56,11 +56,11 @@ normative:
   RFC8613:
   RFC8724:
   RFC8824:
-  RFC9595:
   I-D.ietf-schc-universal-option:
   I-D.ietf-schc-icmpv6-compression:
   I-D.ietf-schc-8824-update:
 informative:
+  RFC9441:
   I-D.ietf-lpwan-architecture:
   I-D.toutain-schc-coreconf-management:
   I-D.ietf-core-oscore-key-update:
@@ -98,19 +98,14 @@ the SCHC end-points.
 
 This document defines a YANG data model {{RFC7950}} to represent compression,
 fragmentation, and management Rules, which leads to common representation for
-values for all the Rules' elements. This data model is a revision of the 
-`ietf-schc` module of {{RFC9363}}, and not
-an augmentation such as the one defined in
-{{I-D.ietf-schc-universal-option}}, for two reasons:
-
-* The key of the compression Rule entries is changed. A single entry index
-  replaces the Field ID, the Field Position and the Direction Indicator, which
-  makes the key shorter and keeps the entries strictly ordered as the fields
-  in the header {{RFC8724}}. Since the key of a list cannot be changed in a
-  published module ({{Section 11 of RFC7950}}), a new list is defined and the
-  previous one is deprecated.
-* The module keeps its name and namespace, so the SID range already allocated
-  to `ietf-schc` by IANA can be used for this revision {{RFC9595}}.
+values for all the Rules' elements. This data model is a revision of the
+`ietf-schc` module of {{RFC9363}}, and not an augmentation such as the one
+defined in {{I-D.ietf-schc-universal-option}}, since the key of the compression
+Rule entries is changed. A single entry index replaces the Field ID, the Field
+Position and the Direction Indicator, which makes the key shorter and keeps the
+entries strictly ordered as the fields in the header {{RFC8724}}. Since the key
+of a list cannot be changed in a published module ({{Section 11 of RFC7950}}),
+a new list is defined and the previous one is deprecated.
 
 The goal of this document is to update the formal description of the Rules, to
 extend SCHC to new environments, and to offer:
@@ -259,9 +254,8 @@ The main updates of the YANG data model defined in {{RFC9363}} are:
   (see {{convention-for-compression-decompression-actions}}).
 * Action: a compression Rule can carry an Action, applied to the packets
   matching it (see {{convention-for-action}}).
-* Rule management: a new feature, a new Rule nature, a Guard period, a status
-  for each Rule, and an RPC to duplicate a Rule (see {{Term}} and
-  {{yang-tree}}).
+* Rule management: a new feature, a new Rule nature, a Guard period, and a
+  status for each Rule (see {{management-rule}} and {{yang-tree}}).
 
 ## Compression Rules {#comp_types}
 
@@ -335,7 +329,21 @@ The example below ({{Fig-identityref}}) shows how an identityref is created for 
 In the process of compression, the headers of the original packet are first parsed to create a list of fields. This list of fields is matched against the Rules to find the appropriate Rule and apply compression.  {{RFC8724}}  does not state how the Field ID value is constructed.
 In examples, identification is done through a string indexed by the protocol name (e.g., IPv6.version, CoAP.version, etc.).
 
-The current YANG data model includes field definitions found in {{RFC8724}} and {{RFC8824}}.
+The current YANG data model includes field definitions found in {{RFC8724}}
+and {{RFC8824}}, with the following updates:
+
+* The per-option CoAP Field IDs are deprecated, since CoAP options are
+  represented as Universal Options {{I-D.ietf-schc-universal-option}} (see
+  {{convention-for-space-identifier}} and {{compression-rule}}).
+* New sub-fields of the OSCORE option are defined, for the OSCORE flags
+  (`fid-coap-option-oscore-flags-flagbits`, `fid-coap-option-oscore-flags-n`)
+  and for KUDOS (`fid-coap-option-kudos-x`, `fid-coap-option-kudos-x-flagbits`,
+  `fid-coap-option-kudos-x-m`, `fid-coap-option-kudos-nonce`)
+  {{I-D.ietf-schc-universal-option}}.
+* Field IDs are defined for ICMPv6, derived from `fid-icmpv6-base-type`
+  {{I-D.ietf-schc-icmpv6-compression}}.
+* Two Field IDs independent of any protocol are defined, `fid-unused` and
+  `fid-payload` {{I-D.ietf-schc-icmpv6-compression}}.
 
 Using the YANG data model, each field MUST be identified through a global YANG identityref.
 
@@ -474,6 +482,12 @@ takes no argument.
 
 Fragmentation is optional in the data model and depends on the presence of the `fragmentation` feature.
 
+The SCHC Compound ACK {{RFC9441}} augments this data model with the
+`ietf-schc-compound-ack` module, to acknowledge several windows in a single
+SCHC ACK message in the ACK-on-Error mode. This augmentation remains valid
+for the data model defined in this document, since the fragmentation part of
+the module, augmented by {{RFC9441}}, is unchanged.
+
 Most of the fragmentation parameters are listed in {{Appendix D of RFC8724}}.
 
 Since fragmentation Rules work for a specific direction, they MUST contain a mandatory Direction Indicator.
@@ -588,35 +602,139 @@ Three natures of Rules are defined in {{RFC8724}}:
 * No-compression: This identifies the default Rule used to send a packet integrally when no-compression Rule was found (see {{Section 6 of RFC8724}}).
 * Fragmentation: Fragmentation parameters are associated with the RuleID. Fragmentation is optional, and the feature `fragmentation` should be set.
 
-The YANG data model respectively introduces these three identities :
+{{I-D.toutain-schc-coreconf-management}} defines a fourth nature:
+
+* Management: A management Rule carries the management traffic between SCHC
+  instances. It uses the compression Rule structure, and only the
+  `entry-universal` list. Management is optional, and the feature
+  `management` should be set.
+
+The YANG data model respectively introduces these four identities:
 
 * `nature-compression`
 * `nature-no-compression`
 * `nature-fragmentation`
+* `nature-management`
 
 The naming convention is `nature-` followed by the nature identifier.
 
-To access a specific Rule, the RuleID length and value are used as a key. The Rule is either
-a compression or a fragmentation Rule.
+To access a specific Rule, the RuleID length and value are used as a key. The
+Rule is either a compression, a no-compression, a fragmentation, or a
+management Rule.
 
 ## Compression Rule {#compression-rule}
 
-A compression Rule is composed of entries describing its processing. An entry  contains all the information defined in {{Fig-ctxt}} with the types defined above.
+A compression Rule is composed of entries describing its processing. An entry
+contains all the information defined in {{Fig-ctxt}} with the types defined
+above.
 
-The compression Rule described {{Fig-ctxt}} is defined by `compression-content`. It defines a list of
-`compression-rule-entry`, indexed by their Field ID, position, and direction. The `compression-rule-entry`
-element represents a line in {{Fig-ctxt}}. Their type reflects the identifier types defined in
-{{comp_types}}.
+One main change in this data model is the deprecation of the
+`compression-content` grouping, used by the `compression` case, in favor of
+the `compression-content-universal` grouping, used by the
+`compression-universal` case. {{I-D.ietf-schc-universal-option}} explains this
+change.
 
-Some checks are performed on the values:
+Universal Options give more flexibility in the management of the options.
+Defining a new SCHC Field ID identityref for each option requires the SCHC
+data model to be updated each time a protocol defines a new option. With
+Universal Options, only a Space ID identity is defined in the SCHC data model,
+and the entry carries the option number used by the protocol (see
+{{convention-for-space-identifier}}). Any new option defined by a protocol can
+then be added to a Rule without updating the data model.
 
-* When MO is ignore, no Target Value is needed; for other MOs, there MUST be a Target Value present.
+To avoid long keys to access a specific entry, the `entry-index` leaf is the
+key of the `entry-universal` list, instead of the Field ID, the Field Position
+and the Direction Indicator. It also guarantees the order of the entries
+inside a Rule, an order reinforced by the "ordered-by user" statement of the
+list. Each entry of `entry-universal` represents a line in {{Fig-ctxt}}, and
+contains either a `field-id` or a `space-id` with its `universal-value`.
+
+The Field Length also includes a parameter, the `field-length-value` leaf,
+used by the new functions `fl-length-bytes` and `fl-length-bits`, which
+generalize functions such as `fl-token-length` (see
+{{convention-for-field-length}}).
+
+The deprecated `compression-content` grouping defines a list of
+`compression-rule-entry`, indexed by their Field ID, position, and direction.
+Their type reflects the identifier types defined in {{comp_types}}.
+
+This change also deprecates the per-option CoAP Field IDs, since a CoAP option
+can be represented as a Universal Option with the tuple (`space-id-coap`,
+option number). Only the Field IDs describing the sub-fields of a single CoAP
+option, for OSCORE and KUDOS, remain current: they describe the parts of the
+option rather than stand for an arbitrary one, and use `fid-coap-option` as
+their base.
+
+A deprecated definition is still valid: following {{Section 7.21.2 of
+RFC7950}}, it may still be implemented, to keep interoperability with existing
+implementations. The Rules defined with the data model of {{RFC9363}} therefore
+remain valid.
+
+However, the deprecated per-option CoAP Field IDs MUST NOT be used in the
+`entry-universal` list: a CoAP option is then represented by `space-id-coap`
+and its option number. They remain usable only in the deprecated `entry` list.
+
+The identities defined by this revision of the data model (Field IDs, Field
+Length functions, Matching Operators, and Compression Decompression Actions)
+MUST NOT be used in the deprecated `entry` list, which is only kept for the
+Rules defined with {{RFC9363}}.
+
+Some checks are performed on the values, both in `entry-universal` and in the
+deprecated `entry` list:
+
+* When MO is ignore, no Target Value is needed; for other MOs, there MUST be a
+  Target Value present.
 * When MSB MO is specified, the `matching-operator-value` must be present.
+* When the CDA is not-sent, LSB, or mapping-sent, there MUST be a Target Value
+  present; it is not needed for value-sent, compute, DevIID, AppIID,
+  compress-sent, and rev-compress-sent.
+* The `entry-universal` list is only used in Rules whose nature is
+  `nature-compression` or `nature-management`; the deprecated `entry` list is
+  only used in Rules whose nature is `nature-compression`.
+
+The following checks only apply to the `entry-universal` list:
+
+* When the Field Length is `fl-length-bytes` or `fl-length-bits`, the
+  `field-length-value` leaf MUST be present.
+* The deprecated per-option CoAP Field IDs MUST NOT be used as `field-id`.
 
 ## Fragmentation Rule {#fragmentation-rule}
 
-A fragmentation Rule is composed of entries describing the protocol behavior. Some on them are numerical entries,
-others are identifiers defined in {{frag_types}}.
+A fragmentation Rule is composed of entries describing the protocol behavior.
+Some of them are numerical entries, others are identifiers defined in
+{{frag_types}}.
+
+The fragmentation Rule is kept unchanged from {{RFC9363}}. The SCHC Compound
+ACK {{RFC9441}} augments it to allow several bitmaps in a SCHC ACK message.
+
+## Management Rule {#management-rule}
+
+Management Rules are defined in {{I-D.toutain-schc-coreconf-management}}. They
+allow a SCHC instance to modify the Set of Rules they belong to, except the
+management Rules themselves. A management Rule uses the compression Rule
+structure, with the `entry-universal` list, and the `nature-management`
+nature.
+
+{{I-D.toutain-schc-coreconf-management}} also introduces a Guard period,
+during which a deleted Rule ID MUST NOT be reused. This information is global
+to all the Rules: the `guard-period` container is carried in the `context`
+container, and not in a Rule. It uses the same coding as the fragmentation
+timers, with `ticks-duration` and `ticks-numbers` (see {{timer-values}}).
+
+{{I-D.toutain-schc-coreconf-management}} also introduces a Rule status, to
+indicate whether a Rule can be used or not. The `rule-status` leaf is only
+present when the `management` feature is activated. Its type is
+`status-type`, and its values are:
+
+* `status-valid`: the Rule belongs to the Set of Rules and can be used. This is
+  the default value.
+* `status-candidate`: the Rule has been created by management, but the other
+  end has not validated it yet. It cannot be used.
+* `status-invalid`: the Rule has been deleted by management, and the Guard
+  period is running. It cannot be used, and its Rule ID cannot be reused.
+* `status-free`: the Rule ID can be used to create a new Rule.
+
+The naming convention is `status-` followed by the status name.
 
 ## YANG Tree {#yang-tree}
 
@@ -625,11 +743,17 @@ Network Management Datastore Architecture defined in {{RFC8342}}.
 
 ~~~ yangtree
 module: ietf-schc
+  +--rw context {management}?
+  |  +--rw guard-period
+  |     +--rw ticks-duration?   uint8
+  |     +--rw ticks-numbers?    uint16
   +--rw schc
      +--rw rule* [rule-id-value rule-id-length]
         +--rw rule-id-value                   uint32
         +--rw rule-id-length                  uint8
         +--rw rule-nature                     nature-type
+        +--rw rule-status?                    status-type
+        |       {management}?
         +--rw (nature)?
            +--:(fragmentation) {fragmentation}?
            |  +--rw fragmentation-mode
@@ -657,24 +781,52 @@ module: ietf-schc
            |        +--rw tile-size?          uint8
            |        +--rw tile-in-all-1?      schc:all-1-data-type
            |        +--rw ack-behavior?       schc:ack-behavior-type
-           +--:(compression) {compression}?
-              +--rw entry*
-                      [field-id field-position direction-indicator]
-                 +--rw field-id                    schc:fid-type
-                 +--rw field-length                schc:fl-type
-                 +--rw field-position              uint8
-                 +--rw direction-indicator         schc:di-type
-                 +--rw target-value* [index]
-                 |  +--rw index    uint16
-                 |  +--rw value?   binary
-                 +--rw matching-operator           schc:mo-type
-                 +--rw matching-operator-value* [index]
-                 |  +--rw index    uint16
-                 |  +--rw value?   binary
-                 +--rw comp-decomp-action          schc:cda-type
-                 +--rw comp-decomp-action-value* [index]
-                    +--rw index    uint16
-                    +--rw value?   binary
+           x--:(compression) {compression}?
+           |  x--rw entry*
+           |          [field-id field-position direction-indicator]
+           |     +--rw field-id                    schc:fid-type
+           |     +--rw field-length                union
+           |     +--rw field-position              uint8
+           |     +--rw direction-indicator         schc:di-type
+           |     +--rw target-value* [index]
+           |     |  +--rw index    uint16
+           |     |  +--rw value?   binary
+           |     +--rw matching-operator           schc:mo-type
+           |     +--rw matching-operator-value* [index]
+           |     |  +--rw index    uint16
+           |     |  +--rw value?   binary
+           |     +--rw comp-decomp-action          schc:cda-type
+           |     +--rw comp-decomp-action-value* [index]
+           |        +--rw index    uint16
+           |        +--rw value?   binary
+           +--:(compression-universal) {compression or management}?
+              +--rw entry-universal* [entry-index]
+              |  +--rw entry-index                 uint16
+              |  +--rw (field-or-space)
+              |  |  +--:(regular-field)
+              |  |  |  +--rw field-id              schc:fid-type
+              |  |  +--:(universal-option)
+              |  |     +--rw space-id              schc:space-id-type
+              |  |     +--rw universal-value       uint64
+              |  +--rw field-length                union
+              |  +--rw field-length-value?         uint16
+              |  +--rw field-position              uint8
+              |  +--rw direction-indicator         schc:di-type
+              |  +--rw target-value* [index]
+              |  |  +--rw index    uint16
+              |  |  +--rw value?   binary
+              |  +--rw matching-operator           schc:mo-type
+              |  +--rw matching-operator-value* [index]
+              |  |  +--rw index    uint16
+              |  |  +--rw value?   binary
+              |  +--rw comp-decomp-action          schc:cda-type
+              |  +--rw comp-decomp-action-value* [index]
+              |     +--rw index    uint16
+              |     +--rw value?   binary
+              +--rw action?                   action-type
+              +--rw action-value* [index]
+                 +--rw index    uint16
+                 +--rw value?   binary
 ~~~
 {: #Fig-model-overview title="Overview of the SCHC Data Model"}
 
@@ -739,6 +891,115 @@ module ietf-schc {
      operations in fields.
      This data model applies to both compression and fragmentation.";
 
+  revision 2026-10-27 {
+    description
+      "Add 'rule-status' to 'list rule', gated by 'if-feature
+       management', with the 'status-base-type' identity and its
+       'status-valid', 'status-candidate', 'status-invalid' and
+       'status-free' derived identities, and the 'status-type'
+       typedef. A Rule whose 'rule-status' is 'status-candidate'
+       has been created by management and is not usable until the
+       other end has validated it. Remove the 'duplicate-rule' RPC,
+       now defined in draft-toutain-schc-coreconf-management.";
+  }
+
+  revision 2026-09-22 {
+    description
+      "Wire the 'nature-management' Rule nature into the data
+       model: widen 'compression-content-universal''s
+       'entry-universal' must to accept 'nature-compression' or
+       'nature-management', instead of adding a separate, SID-
+       duplicating 'case management' for an identical structure;
+       widen 'case compression-universal''s if-feature to
+       'compression or management' accordingly; and move
+       'management-content' (the 'guard-period' timer) out of
+       'list rule' into a new top-level 'context' container, gated
+       by 'if-feature management', since it applies to the whole
+       SCHC context rather than to a single Rule.";
+  }
+
+  revision 2026-08-20 {
+    description
+      "Add kudos FID defined in draft-ietf-core-oscore-key-update.
+       Restore the twenty per-CoAP-option FIDs (fid-coap-option-*)
+       that had been removed in an earlier revision, marking them
+       'status deprecated' instead of deleting them, per RFC 7950
+       Section 11 ('Obsolete definitions MUST NOT be removed from
+       published modules') and RFC 8407 Section 4.7 (an object
+       SHOULD stay 'deprecated' for at least one year before moving
+       to 'obsolete'). They are superseded by Universal Options
+       (space-id-coap / universal-value). Rename the '-v2'
+       compression-rule-entry/compression-content/case suffix to
+       '-universal'. Fix the space-id-coap identity description and
+       reference, mistakenly copy-pasted from fid-ipv6-*. Deprecate
+       the
+       unused fid-oscore-base-type identity: it was never used as a
+       base by any other identity (the OSCORE suboption FIDs derive
+       directly from fid-coap-option), but it is published in
+       RFC 9363 and cannot be removed (RFC 7950, Section 11).";
+  }
+
+  revision 2026-05-07 {
+    description
+      "add two generic fid unused and payload to be used in any
+      protocol and for padding and payload definition.";
+  }
+
+  revision 2026-04-05 {
+    description
+      "Alternative: use choice/case to structurally distinguish
+       regular
+       fields (field-id only) from universal options (space-id +
+       mandatory
+       universal-value).";
+  }
+
+  revision 2026-02-24 {
+    description
+      "
+      - Add Management feature to support management of SCHC rules.
+      - Introduce RPCs to manage rules.";
+  }
+
+  revision 2026-01-12 {
+    description
+    "test module to unify universal option and regular entries:
+    - all options are identified with a space-id and an option-id.
+      For regular fields like fid-ipv6-version the space-id is set
+      to 0.
+    - the entries are identified by an index, reducing the keys to
+      a single element.
+    - introduction of a new function to define the length. This
+    option
+      takes an entry-index as parameter to refer to a field
+      indicating
+      length.
+      for instance fl-token-length is now equivalent to:
+      fl-length_byte(index) where index refers to an entry-index for
+      TKL field.";
+  }
+
+  revision 2025-11-24 {
+    description
+      "This version includes new developments in the SCHC
+       architecture
+       and RFCs published since the initial version of this module.
+       It includes:
+       * new Field IDs defined for CoAP OSCORE support as described
+       in draft-ietf-schc-8824-update.
+       * ICMPv6 FIDs defined in draft-ietf-schc-icmpv6.
+       * Universal options for CoAP and other protocols options
+       parsing
+         as described in draft-ietf-schc-universal-options.
+       * the coap-option FIDs are deprecated in favor of the more
+       generic
+         universal-option Field IDs.
+      ";
+    reference
+      "RFC 9363 A YANG Data Model for Static Context Header
+                Compression (SCHC)";
+  }
+
   revision 2023-03-01 {
     description
       "Initial version from RFC 9363.";
@@ -746,6 +1007,7 @@ module ietf-schc {
       "RFC 9363 A YANG Data Model for Static Context Header
                 Compression (SCHC)";
   }
+
 
   feature compression {
     description
@@ -757,14 +1019,39 @@ module ietf-schc {
       "SCHC fragmentation capabilities are taken into account.";
   }
 
+  feature management {
+    description
+      "SCHC compression capabilities for rule management.";
+  }
+
   // -------------------------
   //  Field ID type definition
   //--------------------------
   // generic value TV definition
 
-  identity fid-base-type {
+  identity space-field-id-base-type {
     description
       "Field ID base type for all fields.";
+  }
+
+  identity fid-base-type {
+    base space-field-id-base-type;
+    description
+      "Field ID base type for all fields.";
+  }
+
+ identity fid-unused {
+    base fid-base-type;
+    description
+      "Padding field in any protocol.";
+  }
+
+  identity fid-payload {
+    base fid-base-type;
+    description
+      "Payload field in any protocol. This field contains the
+       remaining
+       bytes after the header fields.";
   }
 
   identity fid-ipv6-base-type {
@@ -1007,172 +1294,216 @@ module ietf-schc {
 
   identity fid-coap-option-if-match {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option If-Match.";
+      "CoAP option If-Match. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 1).";
     reference
       "RFC 7252 The Constrained Application Protocol (CoAP)";
   }
 
   identity fid-coap-option-uri-host {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option Uri-Host.";
+      "CoAP option Uri-Host. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 3).";
     reference
       "RFC 7252 The Constrained Application Protocol (CoAP)";
   }
 
   identity fid-coap-option-etag {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option ETag.";
+      "CoAP option ETag. Deprecated in favor of Universal Options
+       (space-id-coap / universal-value = 4).";
     reference
       "RFC 7252 The Constrained Application Protocol (CoAP)";
   }
 
   identity fid-coap-option-if-none-match {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option if-none-match.";
+      "CoAP option if-none-match. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 5).";
     reference
       "RFC 7252 The Constrained Application Protocol (CoAP)";
   }
 
   identity fid-coap-option-observe {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option Observe.";
+      "CoAP option Observe. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 6).";
     reference
-      "RFC 7252 The Constrained Application Protocol (CoAP)";
+      "RFC 7641 Observing Resources in the Constrained Application
+                Protocol (CoAP)";
   }
 
   identity fid-coap-option-uri-port {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option Uri-Port.";
+      "CoAP option Uri-Port. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 7).";
     reference
       "RFC 7252 The Constrained Application Protocol (CoAP)";
   }
 
   identity fid-coap-option-location-path {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option Location-Path.";
+      "CoAP option Location-Path. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 8).";
     reference
       "RFC 7252 The Constrained Application Protocol (CoAP)";
   }
 
   identity fid-coap-option-uri-path {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option Uri-Path.";
+      "CoAP option Uri-Path. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 11).";
     reference
       "RFC 7252 The Constrained Application Protocol (CoAP)";
   }
 
   identity fid-coap-option-content-format {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option Content Format.";
+      "CoAP option Content Format. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 12).";
     reference
       "RFC 7252 The Constrained Application Protocol (CoAP)";
   }
 
   identity fid-coap-option-max-age {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option Max-Age.";
+      "CoAP option Max-Age. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 14).";
     reference
       "RFC 7252 The Constrained Application Protocol (CoAP)";
   }
 
   identity fid-coap-option-uri-query {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option Uri-Query.";
+      "CoAP option Uri-Query. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 15).";
     reference
       "RFC 7252 The Constrained Application Protocol (CoAP)";
   }
 
   identity fid-coap-option-accept {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option Accept.";
+      "CoAP option Accept. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 17).";
     reference
       "RFC 7252 The Constrained Application Protocol (CoAP)";
   }
 
   identity fid-coap-option-location-query {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option Location-Query.";
+      "CoAP option Location-Query. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 20).";
     reference
       "RFC 7252 The Constrained Application Protocol (CoAP)";
   }
 
   identity fid-coap-option-block2 {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option Block2.";
+      "CoAP option Block2. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 23).";
     reference
-      "RFC 7959 Block-Wise Transfers in the Constrained
-                Application Protocol (CoAP)";
+      "RFC 7959 Block-Wise Transfers in the Constrained Application
+                Protocol (CoAP)";
   }
 
   identity fid-coap-option-block1 {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option Block1.";
+      "CoAP option Block1. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 27).";
     reference
-      "RFC 7959 Block-Wise Transfers in the Constrained
-                Application Protocol (CoAP)";
+      "RFC 7959 Block-Wise Transfers in the Constrained Application
+                Protocol (CoAP)";
   }
 
   identity fid-coap-option-size2 {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option Size2.";
+      "CoAP option Size2. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 28).";
     reference
-      "RFC 7959 Block-Wise Transfers in the Constrained
-                Application Protocol (CoAP)";
+      "RFC 7959 Block-Wise Transfers in the Constrained Application
+                Protocol (CoAP)";
   }
 
   identity fid-coap-option-proxy-uri {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option Proxy-Uri.";
+      "CoAP option Proxy-Uri. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 35).";
     reference
       "RFC 7252 The Constrained Application Protocol (CoAP)";
   }
 
   identity fid-coap-option-proxy-scheme {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option Proxy-Scheme.";
+      "CoAP option Proxy-Scheme. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 39).";
     reference
       "RFC 7252 The Constrained Application Protocol (CoAP)";
   }
 
   identity fid-coap-option-size1 {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option Size1.";
+      "CoAP option Size1. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 60).";
     reference
       "RFC 7252 The Constrained Application Protocol (CoAP)";
   }
 
   identity fid-coap-option-no-response {
     base fid-coap-option;
+    status deprecated;
     description
-      "CoAP option No response.";
+      "CoAP option No response. Deprecated in favor of Universal
+       Options (space-id-coap / universal-value = 258).";
     reference
-      "RFC 7967 Constrained Application Protocol (CoAP)
-                Option for No Server Response";
+      "RFC 7967 Constrained Application Protocol (CoAP) Option for
+                No Server Response";
   }
 
   identity fid-oscore-base-type {
     base fid-coap-option;
+    status deprecated;
     description
-      "OSCORE options (RFC8613) split in suboptions.";
+      "OSCORE options (RFC8613) split in suboptions. Deprecated: this
+       identity is not used as a base, the OSCORE suboption Field IDs
+       derive from fid-coap-option.";
     reference
       "RFC 8824 Static Context Header Compression (SCHC) for the
                 Constrained Application Protocol (CoAP)";
@@ -1188,10 +1519,33 @@ module ietf-schc {
                 Section 6.4)";
   }
 
+   identity fid-coap-option-oscore-flags-flagbits {
+    base fid-coap-option-oscore-flags;
+    description
+      "First 5 bits of the OSCORE flags field forming flags
+       subfield.";
+    reference
+      "RFC 8824 Static Context Header Compression (SCHC) for the
+                Constrained Application Protocol (CoAP) (see
+                Section 6.4)";
+  }
+
+  identity fid-coap-option-oscore-flags-n {
+    base fid-coap-option-oscore-flags;
+    description
+      "last 3 bits of the OSCORE flags field giving the length
+      of Partial IV.";
+    reference
+      "RFC 8824 Static Context Header Compression (SCHC) for the
+                Constrained Application Protocol (CoAP) (see
+                Section 6.4)";
+  }
+
+
   identity fid-coap-option-oscore-piv {
     base fid-coap-option;
     description
-      "CoAP option OSCORE flags.";
+      "CoAP option OSCORE Partial IV.";
     reference
       "RFC 8824 Static Context Header Compression (SCHC) for the
                 Constrained Application Protocol (CoAP) (see
@@ -1201,7 +1555,7 @@ module ietf-schc {
   identity fid-coap-option-oscore-kid {
     base fid-coap-option;
     description
-      "CoAP option OSCORE flags.";
+      "CoAP option OSCORE Key ID.";
     reference
       "RFC 8824 Static Context Header Compression (SCHC) for the
                 Constrained Application Protocol (CoAP) (see
@@ -1211,11 +1565,128 @@ module ietf-schc {
   identity fid-coap-option-oscore-kidctx {
     base fid-coap-option;
     description
-      "CoAP option OSCORE flags.";
+      "CoAP option OSCORE Key ID Context.";
     reference
       "RFC 8824 Static Context Header Compression (SCHC) for the
                 Constrained Application Protocol (CoAP)(see
                 Section 6.4)";
+  }
+
+  identity fid-coap-option-kudos-x {
+    base fid-coap-option;
+    description
+      "x field contained in the kudos option defined in
+      draft-ietf-core-oscore-key-update.";
+    reference
+      "draft-ietf-core-oscore-key-update";
+  }
+
+  identity fid-coap-option-kudos-x-flagbits {
+    base fid-coap-option-kudos-x;
+    description
+      "4 first bits of the x field in the kudos option defined in
+      draft-ietf-core-oscore-key-update.";
+    reference
+      "draft-ietf-core-oscore-key-update";
+  }
+
+  identity fid-coap-option-kudos-x-m {
+    base fid-coap-option-kudos-x;
+    description
+      "4 last bits of the x field in the kudos option defined in
+      draft-ietf-core-oscore-key-update.";
+    reference
+      "draft-ietf-core-oscore-key-update";
+  }
+
+  identity fid-coap-option-kudos-nonce {
+    base fid-coap-option;
+    description
+      "CoAP option kudos carrying the nonce.";
+    reference
+      "draft-ietf-core-oscore-key-update";
+  }
+
+
+ identity fid-icmpv6-base-type {
+   base schc:fid-base-type;
+   description
+     "Field IP base type for ICMPv6 headers described in RFC 4443";
+   reference
+     "RFC 4443   Internet Control Message Protocol (ICMPv6)
+                 for the Internet Protocol Version 6 (IPv6)
+                 Specification";
+ }
+
+  identity fid-icmpv6-type {
+    base fid-icmpv6-base-type;
+    description
+      "ICMPv6 code field present in all ICMPv6 messages.";
+ }
+
+ identity fid-icmpv6-code {
+   base fid-icmpv6-base-type;
+   description
+     "ICMPv6 code field present in all ICMPv6 messages.";
+ }
+
+ identity fid-icmpv6-checksum {
+   base fid-icmpv6-base-type;
+   description
+     "ICMPv6 checksum field present in all ICMPv6 messages.";
+ }
+
+ identity fid-icmpv6-mtu {
+   base fid-icmpv6-base-type;
+   description
+     "ICMPv6 MTU, present in Packet Too Big message.";
+ }
+
+ identity fid-icmpv6-pointer {
+   base fid-icmpv6-base-type;
+   description
+     "ICMPv6 Pointer, present in Parameter Problem message.";
+ }
+
+ identity fid-icmpv6-identifier {
+   base fid-icmpv6-base-type;
+   description
+     "ICMPv6 identifier field, present in Echo Request/Reply
+     message.";
+ }
+
+ identity fid-icmpv6-sequence {
+   base fid-icmpv6-base-type;
+   description
+     "ICMPv6 sequence number field, present in Echo Request/Reply
+      message.";
+ }
+
+ identity fid-icmpv6-payload {
+   base fid-icmpv6-base-type;
+   description
+     "ICMPv6 payload following ICMPv6 header.
+      If payload is empty, this field exists with a length of 0.";
+ }
+
+  //----------------------------------
+  // Universal Option space IDs
+  //----------------------------------
+
+  identity space-id-base-type {
+    base schc:space-field-id-base-type;
+    description
+      "Base identity for a Universal Option space. Several
+       protocols define options (e.g. CoAP); each such protocol
+       is identified by an identity derived from this base type.";
+  }
+
+  identity space-id-coap {
+    base space-id-base-type;
+    description
+      "Space ID identifying the CoAP option space.";
+    reference
+      "RFC 7252 The Constrained Application Protocol (CoAP)";
   }
 
   //----------------------------------
@@ -1237,6 +1708,16 @@ module ietf-schc {
                 Section 5.3)";
   }
 
+ identity fl-variable-bits {
+    base fl-base-type;
+    description
+      "Residue length in bits is sent as defined for CoAP.";
+    reference
+      "NOT YET DEFINED IN RFCs. This function is a generalization of
+       fl-variable to support bit-level length definition.";
+  }
+
+
   identity fl-token-length {
     base fl-base-type;
     description
@@ -1246,6 +1727,32 @@ module ietf-schc {
                 Constrained Application Protocol (CoAP) (see
                 Section 4.5)";
   }
+
+  identity fl-length-bytes {
+    base fl-base-type;
+
+    description "This function return the length a field
+    by its index in bytes. This is a generalation of
+    fl-token-length.";
+  }
+
+  identity fl-length-bits {
+    base fl-base-type;
+
+    description "This function return the length in bits of a field
+    by its index in bits. ";
+  }
+
+  identity fl-remaining {
+    base fl-base-type;
+
+    description
+      "Field length is not explicitly carried in the Compression
+       Residue.
+      This function is used for a field that extends to the end of
+      the
+      SCHC packet, such as a trailing payload.";
+}
 
   //---------------------------------
   // Direction Indicator type
@@ -1310,6 +1817,7 @@ module ietf-schc {
                 Section 7.3)";
   }
 
+
   identity mo-ignore {
     base mo-base-type;
     description
@@ -1340,6 +1848,19 @@ module ietf-schc {
                 Section 7.3)";
   }
 
+  identity mo-rule-match {
+    base schc:mo-base-type;
+    description
+      "Macthing operator return true, if the TV matches a rule
+        keeping UP and DOWN direction.";
+ }
+
+ identity mo-rev-rule-match {
+   base schc:mo-base-type;
+   description
+     "Macthing operator return true, if the TV matches a rule
+      reversing UP and DOWN direction.";
+ }
   //------------------------------
   // CDA type definition
   //------------------------------
@@ -1424,17 +1945,51 @@ module ietf-schc {
                 Section 7.4)";
   }
 
+ identity cda-compress-sent {
+   base schc:cda-base-type;
+   description
+     "Send a compressed version of TV keeping UP and
+      DOWN direction.";
+ }
+
+ identity cda-rev-compress-sent {
+   base schc:cda-base-type;
+   description
+     "Send a compressed version of TV reversing UP and
+      DOWN direction.";
+ }
+
   // -- type definition
 
-  typedef fid-type {
+  typedef space-field-id-type {
     type identityref {
-      base fid-base-type;
+      base space-field-id-base-type;
     }
     description
       "Field ID generic type.";
     reference
       "RFC 8724 SCHC: Generic Framework for Static Context Header
                 Compression and Fragmentation";
+  }
+
+  typedef fid-type {
+    type identityref {
+      base fid-base-type;
+    }
+    description
+      "Field ID type for regular protocol fields (IPv6, UDP, CoAP,
+       etc.).
+       Used in the regular-field case of compression-rule-entry.";
+  }
+
+  typedef space-id-type {
+    type identityref {
+      base space-id-base-type;
+    }
+    description
+      "Space ID type for universal option spaces (CoAP options,
+       etc.).
+       Used in the universal-option case of compression-rule-entry.";
   }
 
   typedef fl-type {
@@ -1657,12 +2212,13 @@ module ietf-schc {
   }
 
   grouping compression-rule-entry {
+    status deprecated;
     description
       "These entries define a compression entry (i.e., a line),
        as defined in RFC 8724.
-   +-------+--+--+--+------------+-----------------+---------------+
-   |Field 1|FL|FP|DI|Target Value|Matching Operator|Comp/Decomp Act|
-   +-------+--+--+--+------------+-----------------+---------------+
+ +-------+--+--+--+------------+-----------------+---------------+
+ |Field 1|FL|FP|DI|Target Value|Matching Operator|Comp/Decomp Act|
+ +-------+--+--+--+------------+-----------------+---------------+
        An entry in a compression Rule is composed of 7 elements:
        - Field ID: the header field to be compressed
        - Field Length : either a positive integer or a function
@@ -1676,7 +2232,13 @@ module ietf-schc {
          associate parameters
        - Comp./Decomp. Action: the compression or decompression
          action and optional parameters
-      ";
+
+       Deprecated in favor of 'compression-rule-entry-universal',
+       which
+       adds support for Universal Options.";
+    reference
+      "RFC 9363 A YANG Data Model for Static Context Header
+                Compression (SCHC)";
     leaf field-id {
       type schc:fid-type;
       mandatory true;
@@ -1765,7 +2327,9 @@ module ietf-schc {
                 derived-from-or-self(., 'cda-value-sent') or
                 derived-from-or-self(., 'cda-compute') or
                 derived-from-or-self(., 'cda-appiid') or
-                derived-from-or-self(., 'cda-deviid')" {
+                derived-from-or-self(., 'cda-deviid') or
+                derived-from-or-self(., 'cda-compress-sent') or
+                derived-from-or-self(., 'cda-rev-compress-sent')" {
         error-message
           "cda-not-sent, cda-lsb, and cda-mapping-sent need
            target-value";
@@ -1788,6 +2352,245 @@ module ietf-schc {
          require no argument.";
     }
   }
+
+  grouping compression-rule-entry-universal {
+    description
+      "These entries define a compression entry (i.e., a line),
+       as defined in RFC 8724. The format has been generalized
+       to include universal options.
+
+       An entry in a compression Rule is composed of 7 elements:
+       - entry-index: position in the rule.
+       - space field ID: the identityref of a specific field or
+         space ID followed by an universal value.
+       - universal-value: the value associated to the space field ID
+       to identify
+         a specific field in the space. For regular fields, this
+         value is 0 and the space field ID is the field ID. For
+         universal options, the space field ID identifies the type
+         of option and the universal value identifies the specific
+         option.
+       - Field Length : either a positive integer or a function
+       - Field Position: a positive (and possibly equal to 0)
+         integer
+       - Direction Indicator: an indication in which direction the
+         compression and decompression process is effective
+       - Target Value: a value against which the header field is
+         compared
+       - Matching Operator: the comparison operation and optional
+         associate parameters
+       - Comp./Decomp. Action: the compression or decompression
+         action and optional parameters
+      ";
+
+    leaf entry-index {
+      type uint16;
+
+      description
+        "Sequential position of the entry in the user-ordered Rule
+         list,
+         starting at 0.";
+    }
+
+    choice field-or-space {
+      mandatory true;
+      description
+        "Distinguishes a regular protocol field from a universal
+         option.
+         Exactly one case must be present:
+         - regular-field: a standard protocol field identified by a
+         field ID
+           (e.g., fid-ipv6-version, fid-udp-dev-port).
+         - universal-option: a generic option identified by a space
+         ID
+           (e.g., space-id-coap) plus a numeric option value (e.g.,
+           the
+           CoAP option number).";
+
+      case regular-field {
+        description
+          "The entry refers to a regular protocol field.
+           No universal-value is needed.";
+        leaf field-id {
+          type schc:fid-type;
+          must "not(
+          derived-from-or-self(.,'fid-coap-option-if-match') or
+          derived-from-or-self(.,'fid-coap-option-uri-host') or
+          derived-from-or-self(.,'fid-coap-option-etag') or
+          derived-from-or-self(.,'fid-coap-option-if-none-match') or
+          derived-from-or-self(.,'fid-coap-option-observe') or
+          derived-from-or-self(.,'fid-coap-option-uri-port') or
+          derived-from-or-self(.,'fid-coap-option-location-path') or
+          derived-from-or-self(.,'fid-coap-option-uri-path') or
+          derived-from-or-self(.,'fid-coap-option-content-format') or
+          derived-from-or-self(.,'fid-coap-option-max-age') or
+          derived-from-or-self(.,'fid-coap-option-uri-query') or
+          derived-from-or-self(.,'fid-coap-option-accept') or
+          derived-from-or-self(.,'fid-coap-option-location-query') or
+          derived-from-or-self(.,'fid-coap-option-block2') or
+          derived-from-or-self(.,'fid-coap-option-block1') or
+          derived-from-or-self(.,'fid-coap-option-size2') or
+          derived-from-or-self(.,'fid-coap-option-proxy-uri') or
+          derived-from-or-self(.,'fid-coap-option-proxy-scheme') or
+          derived-from-or-self(.,'fid-coap-option-size1') or
+          derived-from-or-self(.,'fid-coap-option-no-response'))" {
+            error-message
+              "Deprecated per-option CoAP Field IDs must not be used
+               in entry-universal; use space-id-coap and the option
+               number.";
+          }
+          mandatory true;
+          description
+            "Field ID of a regular protocol field.";
+        }
+      }
+
+      case universal-option {
+        description
+          "The entry refers to a universal option within a given
+           space.
+           Both space-id and universal-value are required.";
+        leaf space-id {
+          type schc:space-id-type;
+          mandatory true;
+          description
+            "Space ID identifying the protocol option space
+             (e.g., space-id-coap for CoAP options).";
+        }
+        leaf universal-value {
+          type uint64;
+          mandatory true;
+          description
+            "Numeric value identifying the specific option within the
+             space
+             (e.g., the CoAP option number).";
+        }
+      } // case universal-option
+    } // choice field-or-space
+
+    leaf field-length {
+      type union {
+      type uint8;
+      type schc:fl-type;
+        }
+      must "not(derived-from-or-self(., 'fl-length-bytes') or
+                 derived-from-or-self(., 'fl-length-bits')) or
+            ../field-length-value" {
+        error-message
+          "fl-length-bytes and fl-length-bits need
+           field-length-value";
+      }
+      mandatory true;
+      description
+        "Field Length, expressed in number of bits if the length is
+         known when the Rule is created or through a specific
+         function if the length is variable.";
+    }
+    leaf field-length-value {
+      type uint16;
+
+      description
+      "Argument used by Field Length functions. For
+      fl-length-bytes and fl-length-bits, this value is the
+      entry-index of the Rule entry whose numerical field value
+      specifies the length.";
+      }
+    leaf field-position {
+      type uint8;
+      mandatory true;
+      description
+        "Field Position in the header is an integer.  Position 1
+         matches the first occurrence of a field in the header,
+         while incremented position values match subsequent
+         occurrences.
+         Position 0 means that this entry matches a field
+         irrespective of its position of occurrence in the
+         header.
+         Be aware that the decompressed header may have
+         position-0 fields ordered differently than they
+         appeared in the original packet.";
+    }
+    leaf direction-indicator {
+      type schc:di-type;
+      mandatory true;
+      description
+        "Direction Indicator, indicate if this field must be
+         considered for Rule selection or ignored based on the
+         direction (bidirectional, only uplink, or only
+         downlink).";
+    }
+    list target-value {
+      key "index";
+      uses tv-struct;
+      description
+        "A list of values to compare with the header field value.
+         If Target Value is a singleton, position must be 0.
+         For use as a matching list for the mo-match-mapping Matching
+         Operator, index should take consecutive values starting
+         from 0.";
+    }
+    leaf matching-operator {
+      type schc:mo-type;
+      must "../target-value or derived-from-or-self(.,
+                                                   'mo-ignore')" {
+        error-message
+          "mo-equal, mo-msb, and mo-match-mapping need target-value";
+        description
+          "target-value is not required for mo-ignore.";
+      }
+      must "not (derived-from-or-self(., 'mo-msb')) or
+            ../matching-operator-value" {
+        error-message "mo-msb requires length value";
+      }
+      mandatory true;
+      description
+        "MO: Matching Operator.";
+      reference
+        "RFC 8724 SCHC: Generic Framework for Static Context Header
+                  Compression and Fragmentation (see Section 7.3)";
+    }
+    list matching-operator-value {
+      key "index";
+      uses tv-struct;
+      description
+        "Matching Operator Arguments, based on TV structure to allow
+         several arguments.
+         In RFC 8724, only the MSB Matching Operator needs arguments
+         (a single argument, which is the number of most significant
+         bits to be matched).";
+    }
+    leaf comp-decomp-action {
+      type schc:cda-type;
+      must "../target-value or
+                derived-from-or-self(., 'cda-value-sent') or
+                derived-from-or-self(., 'cda-compute') or
+                derived-from-or-self(., 'cda-appiid') or
+                derived-from-or-self(., 'cda-deviid') or
+                derived-from-or-self(., 'cda-compress-sent') or
+                derived-from-or-self(., 'cda-rev-compress-sent')" {
+        error-message
+          "cda-not-sent, cda-lsb, and cda-mapping-sent need
+           target-value";
+        description
+          "target-value is not required for some CDA.";
+      }
+      mandatory true;
+      description
+        "CDA: Compression Decompression Action.";
+      reference
+        "RFC 8724 SCHC: Generic Framework for Static Context Header
+                  Compression and Fragmentation (see Section 7.4)";
+    }
+    list comp-decomp-action-value {
+      key "index";
+      uses tv-struct;
+      description
+        "CDA arguments, based on a TV structure, in order to allow
+         for several arguments.  The CDAs specified in RFC 8724
+         require no argument.";
+    }
+  }
+
 
   // --Rule nature
 
@@ -1836,22 +2639,177 @@ module ietf-schc {
       "Defines the type to indicate the nature of the Rule.";
   }
 
+  identity nature-management {
+    base nature-base-type;
+    description
+      "Identify a management Rule. Management Rules use the
+     compression Rule structure to operate on the SCHC Context.";
+  /* Reference to be added when the Rule Management specification
+     is available. */
+  }
+
+  identity status-base-type {
+    description
+      "Base identity for the status of a Rule.";
+  }
+
+  identity status-valid {
+    base status-base-type;
+    description
+      "The Rule belongs to the Set of Rules and can be used.";
+  }
+
+  identity status-candidate {
+    base status-base-type;
+    description
+      "The Rule has been created by management and the other end
+       has not validated it yet. It cannot be used for compression,
+       decompression, fragmentation or reassembly, a SCHC packet
+       MUST NOT be generated with its RuleID, and a received
+       packet carrying its RuleID is dropped.";
+  }
+
+  identity status-invalid {
+    base status-base-type;
+    description
+      "The Rule has been deleted by management and the guard period
+       is running. It cannot be used, no Rule with the same RuleID
+       can be created, and the SCHC packets carrying its RuleID are
+       dropped. When the guard period has elapsed, the RuleID
+       becomes free.";
+  }
+
+  identity status-free {
+    base status-base-type;
+    description
+      "The RuleID can be used to create a new Rule. When the guard
+       period of a deleted Rule has elapsed, the Rule is either kept
+       in the Set of Rules with this status, or removed from it. A
+       RuleID absent from the Set of Rules is also free.";
+  }
+
+  typedef status-type {
+    type identityref {
+      base status-base-type;
+    }
+    description
+      "Defines the type to indicate the status of a Rule.";
+  }
+
+  identity action-base-type {
+    description
+      "Action applied to a packet matching a compression Rule, once
+       compression has been performed (or before decompression is
+       performed in the other direction). The default behavior of
+       RFC 8724 is to hand the SCHC Packet over to the lower layer;
+       other actions allow an intermediate entity, typically the
+       SCHC gateway, to process the packet locally instead.";
+    reference
+      "draft-barthel-lpwan-oam-schc-05 OAM for LPWAN using Static
+                Context Header Compression (SCHC) (see Section 5)";
+  }
+
+  identity action-forward {
+    base action-base-type;
+    description
+      "The packet is handed over to the lower layer. This is the
+       default behavior specified in RFC 8724.";
+    reference
+      "RFC 8724 SCHC: Generic Framework for Static Context Header
+                Compression and Fragmentation";
+  }
+
+  identity action-proxy-ping {
+    base action-base-type;
+    description
+      "The packet is not handed over to the lower layer but
+       processed locally by a ping proxy, which answers the ICMPv6
+       Echo Request on behalf of the Device.";
+    reference
+      "draft-barthel-lpwan-oam-schc-05 OAM for LPWAN using Static
+                Context Header Compression (SCHC) (see Section 5)";
+  }
+
+  typedef action-type {
+    type identityref {
+      base action-base-type;
+    }
+    description
+      "Defines the type to indicate the action associated with a
+       compression Rule.";
+  }
+
   grouping compression-content {
+    status deprecated;
     list entry {
+      status deprecated;
       must "derived-from-or-self(../rule-nature,
                                         'nature-compression')" {
         error-message "Rule nature must be compression";
       }
       key "field-id field-position direction-indicator";
-      uses compression-rule-entry;
+
+      uses compression-rule-entry {
+        status deprecated;
+      }
       description
         "A compression Rule is a list of Rule entries, each
          describing a header field.  An entry is identified
          through a field-id, its position in the packet, and
          its direction.";
     }
+
     description
-      "Define a compression Rule composed of a list of entries.";
+      "Define a compression Rule composed of a list of entries.
+       Deprecated in favor of 'compression-content-universal', which
+       adds support for Universal Options.";
+    reference
+      "RFC 9363 A YANG Data Model for Static Context Header
+                Compression (SCHC)";
+  }
+
+  grouping compression-content-universal {
+    list entry-universal {
+      must "derived-from-or-self(../rule-nature,
+                                  'nature-compression') or
+            derived-from-or-self(../rule-nature,
+                                  'nature-management')" {
+        error-message
+          "Rule nature must be compression or management";
+      }
+      key "entry-index";
+      ordered-by user;
+
+      uses compression-rule-entry-universal;
+      description
+        "A compression Rule is a list of Rule entries, each
+         describing a header field or Universal Option. An entry
+         is identified by its entry-index.";
+    }
+
+    leaf action {
+      type action-type;
+      default "schc:action-forward";
+      description
+        "Action to be applied to a packet matching this Rule, after
+         compression or before decompression. When absent, the
+         packet is sent to the lower layer as specified in
+         RFC 8724.";
+    }
+
+    list action-value {
+      key "index";
+      uses tv-struct;
+      description
+        "Parameters associated with the action, based on a TV
+         structure, in order to allow for several arguments.
+         'action-forward' requires no argument.";
+    }
+
+    description
+      "Define a compression Rule composed of a list of entries,
+       using the Universal-Option-aware
+       'compression-rule-entry-universal'.";
     reference
       "RFC 8724 SCHC: Generic Framework for Static Context Header
                 Compression and Fragmentation";
@@ -2055,6 +3013,31 @@ module ietf-schc {
                 Compression and Fragmentation";
   }
 
+
+  grouping management-content {
+    description
+      "This group contains parameters to control management
+       procedure.";
+
+    container guard-period {
+      leaf ticks-duration {
+        type uint8;
+        default "20";
+        description
+          "Duration of one tick in microseconds:
+              2^ticks-duration/10^6 = 1.048s.";
+      }
+      leaf ticks-numbers {
+        type uint16 {
+          range "0..max";
+        }
+        description
+          "Timer duration = ticks-numbers*2^ticks-duration / 10^6.";
+      }
+    }
+  }
+
+
   // Define RuleID.  RuleID is composed of a RuleID value and a
   // RuleID length
 
@@ -2083,6 +3066,14 @@ module ietf-schc {
 
   // SCHC table for a specific device.
 
+  container context {
+    if-feature "management";
+    uses management-content;
+    description
+      "Management-related parameters that apply to the whole SCHC
+       context rather than to a single Rule.";
+  }
+
   container schc {
     list rule {
       key "rule-id-value rule-id-length";
@@ -2093,33 +3084,52 @@ module ietf-schc {
         description
           "Specify the Rule's nature.";
       }
+      leaf rule-status {
+        if-feature "management";
+        type status-type;
+        default "status-valid";
+        description
+          "Status of the Rule. A Rule with the value
+           'status-candidate' has been created by management and is
+           not usable until the other end has validated it. A Rule
+           with the value 'status-invalid' has been deleted and
+           stays in this status during the guard period. A Rule
+           without this leaf is considered 'status-valid'.";
+      }
       choice nature {
         case fragmentation {
           if-feature "fragmentation";
           uses fragmentation-content;
         }
         case compression {
+          status deprecated;
           if-feature "compression";
-          uses compression-content;
+          uses compression-content {
+            status deprecated;
+          }
+        }
+        case compression-universal {
+          if-feature "compression or management";
+          uses compression-content-universal;
         }
         description
-          "A Rule is for compression, for no-compression, or for
-           fragmentation.";
+          "A Rule is for compression, no-compression, fragmentation,
+          or management.";
       }
       description
         "Set of compression, no-compression, or fragmentation
          Rules identified by their rule-id.";
     }
     description
-      "A SCHC set of Rules is composed of a list of Rules that are
-       used for compression, no-compression, or fragmentation.";
+      "A SCHC set of Rules is composed of a list of Rules used for
+   compression, no-compression, fragmentation, or management.";
     reference
       "RFC 8724 SCHC: Generic Framework for Static Context Header
                 Compression and Fragmentation";
   }
 }
 ~~~
-{: #Fig-schc title="SCHC YANG Data Model" sourcecode-name="ietf-schc@2023-03-01.yang" sourcecode-markers="true"}
+{: #Fig-schc title="SCHC YANG Data Model" sourcecode-name="ietf-schc@2026-10-27.yang" sourcecode-markers="true"}
 
 # IANA Considerations {#iana-considerations}
 
@@ -2217,7 +3227,8 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
     <rule-id-value>6</rule-id-value>
     <rule-id-length>3</rule-id-length>
     <rule-nature>nature-compression</rule-nature>
-    <entry>
+    <entry-universal>
+      <entry-index>0</entry-index>
       <field-id>fid-ipv6-version</field-id>
       <field-length>4</field-length>
       <field-position>1</field-position>
@@ -2228,8 +3239,9 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
         <index>0</index>
         <value>AAY=</value>
       </target-value>
-    </entry>
-    <entry>
+    </entry-universal>
+    <entry-universal>
+      <entry-index>1</entry-index>
       <field-id>fid-ipv6-trafficclass</field-id>
       <field-length>8</field-length>
       <field-position>1</field-position>
@@ -2240,8 +3252,9 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
         <index>0</index>
         <value>AA==</value>
       </target-value>
-    </entry>
-    <entry>
+    </entry-universal>
+    <entry-universal>
+      <entry-index>2</entry-index>
       <field-id>fid-ipv6-flowlabel</field-id>
       <field-length>20</field-length>
       <field-position>1</field-position>
@@ -2252,16 +3265,18 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
         <index>0</index>
         <value>AA==</value>
       </target-value>
-    </entry>
-    <entry>
+    </entry-universal>
+    <entry-universal>
+      <entry-index>3</entry-index>
       <field-id>fid-ipv6-payload-length</field-id>
       <field-length>16</field-length>
       <field-position>1</field-position>
       <direction-indicator>di-bidirectional</direction-indicator>
       <matching-operator>mo-ignore</matching-operator>
       <comp-decomp-action>cda-compute</comp-decomp-action>
-    </entry>
-    <entry>
+    </entry-universal>
+    <entry-universal>
+      <entry-index>4</entry-index>
       <field-id>fid-ipv6-nextheader</field-id>
       <field-length>8</field-length>
       <field-position>1</field-position>
@@ -2272,8 +3287,9 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
         <index>0</index>
         <value>ADo=</value>
       </target-value>
-    </entry>
-    <entry>
+    </entry-universal>
+    <entry-universal>
+      <entry-index>5</entry-index>
       <field-id>fid-ipv6-hoplimit</field-id>
       <field-length>8</field-length>
       <field-position>1</field-position>
@@ -2284,8 +3300,9 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
         <index>0</index>
         <value>AP8=</value>
       </target-value>
-    </entry>
-    <entry>
+    </entry-universal>
+    <entry-universal>
+      <entry-index>6</entry-index>
       <field-id>fid-ipv6-devprefix</field-id>
       <field-length>64</field-length>
       <field-position>1</field-position>
@@ -2296,8 +3313,9 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
         <index>0</index>
         <value>IAEEcB8hAdI=</value>
       </target-value>
-    </entry>
-    <entry>
+    </entry-universal>
+    <entry-universal>
+      <entry-index>7</entry-index>
       <field-id>fid-ipv6-deviid</field-id>
       <field-length>64</field-length>
       <field-position>1</field-position>
@@ -2308,23 +3326,25 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
         <index>0</index>
         <value>AAAAAAAAAAM=</value>
       </target-value>
-    </entry>
-    <entry>
+    </entry-universal>
+    <entry-universal>
+      <entry-index>8</entry-index>
       <field-id>fid-ipv6-appprefix</field-id>
       <field-length>64</field-length>
       <field-position>1</field-position>
       <direction-indicator>di-bidirectional</direction-indicator>
       <matching-operator>mo-ignore</matching-operator>
       <comp-decomp-action>cda-value-sent</comp-decomp-action>
-    </entry>
-    <entry>
+    </entry-universal>
+    <entry-universal>
+      <entry-index>9</entry-index>
       <field-id>fid-ipv6-appiid</field-id>
       <field-length>64</field-length>
       <field-position>1</field-position>
       <direction-indicator>di-bidirectional</direction-indicator>
       <matching-operator>mo-ignore</matching-operator>
       <comp-decomp-action>cda-value-sent</comp-decomp-action>
-    </entry>
+    </entry-universal>
   </rule>
   <rule>
     <rule-id-value>12</rule-id-value>
@@ -2334,9 +3354,8 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
     <rcs-algorithm>rcs-crc32</rcs-algorithm>
     <dtag-size>2</dtag-size>
     <fcn-size>3</fcn-size>
-    <fragmentation-mode>
-         fragmentation-mode-no-ack
-    </fragmentation-mode>
+    <fragmentation-mode
+      >fragmentation-mode-no-ack</fragmentation-mode>
   </rule>
   <rule>
     <rule-id-value>100</rule-id-value>
@@ -2361,7 +3380,7 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
 * Introduction: third goal, the management of the Rules by the SCHC instances
   themselves (creation and deletion with CORECONF).
 * Introduction: why this document is a revision and not an augmentation of
-  RFC 9363 (new key of the compression entries, reuse of the SID range).
+  RFC 9363 (new key of the compression entries).
 * Terminology: new terms Action, Entry Index, Guard Period, Management Rule,
   Rule Status, Space ID, and Universal Option.
 * SCHC Rules: fields are also specified by the Universal Option and ICMPv6
@@ -2388,6 +3407,48 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
 * New section "Main Updates from RFC 9363": main updates of the YANG data
   model, with the sections describing them.
 * YANG module: `fid-oscore-base-type`, not used as a base, is deprecated.
+* Compression Rule: the `compression-content` grouping is deprecated in favor
+  of `compression-content-universal` (Universal Options, `entry-index` key,
+  `field-length-value`).
+* Compression Rule: the checks also cover the CDA Target Value, already
+  checked by the module of RFC 9363, and the nature of the Rules using
+  `entry-universal` (compression or management). In `entry-universal`, the
+  `field-length-value` is checked for `fl-length-bytes` and `fl-length-bits`,
+  and the per-option CoAP Field IDs are rejected. The CDA check no longer
+  requires a Target Value for `cda-compress-sent` and
+  `cda-rev-compress-sent`.
+* Compression Rule: the identities defined by this revision MUST NOT be used
+  in the deprecated `entry` list.
+* Fragmentation Rule (Rule Definition): unchanged from RFC 9363, augmented by
+  RFC 9441 to allow several bitmaps in a SCHC ACK message.
+* New section "Management Rule": management Rules, defined in
+  draft-toutain-schc-coreconf-management, modify the Set of Rules, except the
+  management Rules themselves; the Guard period, global to all the Rules and
+  coded as the fragmentation timers; the `rule-status` leaf, present with the
+  `management` feature, with the values `status-valid`, `status-candidate`,
+  `status-invalid`, and `status-free`.
+* YANG Data Model: the module of RFC 9363 is replaced by the revision
+  `ietf-schc@2026-10-27`.
+* YANG Data Model: the `duplicate-rule` RPC is removed; it is defined in
+  draft-toutain-schc-coreconf-management.
+* Example: the compression Rule uses the `entry-universal` list, with an
+  `entry-index` per entry; the line breaks inside the `fragmentation-mode`
+  value, which made the RFC 9363 example invalid, are moved inside the start
+  tag.
+* Compression Rule: the deprecation of the per-option CoAP Field IDs (OSCORE
+  and KUDOS sub-fields remain current) and the validity of the deprecated
+  definitions (RFC 7950, Section 7.21.2); the per-option CoAP Field IDs MUST
+  NOT be used in `entry-universal`.
+* Rule Definition: fourth nature, `nature-management`, for the management
+  Rules.
+* YANG Tree: updated to the new module (`context` container, `rule-status`,
+  `compression-universal` case with `entry-universal`, and `action`).
+* Fragmentation Rule: the `ietf-schc-compound-ack` module of RFC 9441
+  augments this data model to acknowledge several windows in a single ACK,
+  and remains valid for this revision.
+* Convention for Field Identifier: deprecated CoAP Field IDs, new OSCORE and
+  KUDOS sub-fields, ICMPv6 Field IDs, and the protocol-independent
+  `fid-unused` and `fid-payload`.
 * Editorial: the identifiers of the YANG data model are written in courier in
   the text.
 * References: RFC 7950 (YANG 1.1) becomes normative, since the deprecation

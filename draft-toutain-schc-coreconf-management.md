@@ -846,7 +846,8 @@ than the SCHC one.
 
 
 
-This section illustrates the use of RPCs with the "duplicate-rule" RPC.
+This section illustrates the use of RPCs with the "duplicate-rule" RPC, defined
+in the "ietf-schc-rpc-duplicate" YANG module ({{sec-yang-module}}).
 
 ## Duplicate Rule {#sec-duplicate-rule-rpc}
 
@@ -867,8 +868,10 @@ output returns a status, an enumeration conveying the result of the operation:
 Represented as a tree:
 
 ~~~
+module: ietf-schc-rpc-duplicate
+
   rpcs:
-    +---x duplicate-rule
+    +---x duplicate-rule {schc:management}?
        +---w input
        |  +---w from
        |  |  +---w rule-id-value?    uint32
@@ -898,7 +901,7 @@ REQ:  POST </c>
       (Content-Format: application/yang-instances+cbor-seq)
 
 {
-  "/ietf-schc:duplicate-rule":
+  "/ietf-schc-rpc-duplicate:duplicate-rule":
   {
     "input/from/rule-id-value": 8,
     "input/from/rule-id-length": 4,
@@ -916,7 +919,7 @@ RES:  2.04 Changed
       (Content-Format: application/yang-instances+cbor-seq)
 
 {
-  "/ietf-schc:duplicate-rule":
+  "/ietf-schc-rpc-duplicate:duplicate-rule":
   {
     "output/status": "success-with-validation",
   }
@@ -1219,39 +1222,134 @@ allowed (rule-id-value, rule-status updates).{:/comment}
 --- back
 
 
-# YANG DM
+# YANG Module {#sec-yang-module}
 
-The complete "ietf-schc" module, including the "management" feature, the
-"rule-status" leaf, the "context" container and the "duplicate-rule" RPC, is
-defined in {{I-D.toutain-schc-rfc9363bis}} (revision 2026-10-27). For reference,
-the RPC is:
+The "ietf-schc" module, including the "management" feature, the "rule-status"
+leaf and the "context" container, is defined in {{I-D.toutain-schc-rfc9363bis}}
+(revision 2026-10-27). This document defines the "ietf-schc-rpc-duplicate"
+module, which imports it and defines the "duplicate-rule" RPC
+({{sec-duplicate-rule-rpc}}). The RPC is only available when the "management"
+feature of "ietf-schc" is supported.
 
 ~~~ yang
-rpc duplicate-rule {
-  input {
-    container from {
-      uses schc:rule-id-type;
-    }
-    container to {
-      uses schc:rule-id-type;
-    }
-    leaf ipatch-sequence {
-      type binary;
-    }
+module ietf-schc-rpc-duplicate {
+  yang-version 1.1;
+  namespace "urn:ietf:params:xml:ns:yang:ietf-schc-rpc-duplicate";
+  prefix schc-dup;
+
+  import ietf-schc {
+    prefix schc;
+    reference
+      "draft-toutain-schc-rfc9363bis A YANG Data Model for Static
+       Context Header Compression (SCHC)";
   }
-  output {
-    leaf status {
-      type enumeration {
-        enum success-with-validation { value 0; }
-        enum success-not-validated   { value 1; }
-        enum to-rule-already-exists  { value -1; }
-        enum from-rule-not-found     { value -2; }
-        enum invalid-ipatch          { value -3; }
+
+  organization
+    "IETF Static Context Header Compression (schc) Working Group";
+  contact
+    "WG Web:   <https://datatracker.ietf.org/wg/schc/about/>
+     WG List:  <mailto:schc@ietf.org>
+     Editor:   Laurent Toutain
+       <mailto:laurent.toutain@imt-atlantique.fr>";
+  description
+    "Copyright (c) 2026 IETF Trust and the persons identified as
+     authors of the code.  All rights reserved.
+
+     Redistribution and use in source and binary forms, with or
+     without modification, is permitted pursuant to, and subject to
+     the license terms contained in, the Revised BSD License set
+     forth in Section 4.c of the IETF Trust's Legal Provisions
+     Relating to IETF Documents
+     (https://trustee.ietf.org/license-info).
+
+     This version of this YANG module is part of RFC XXXX
+     (https://www.rfc-editor.org/info/rfcXXXX); see the RFC itself
+     for full legal notices.
+
+     The key words 'MUST', 'MUST NOT', 'REQUIRED', 'SHALL', 'SHALL
+     NOT', 'SHOULD', 'SHOULD NOT', 'RECOMMENDED', 'NOT RECOMMENDED',
+     'MAY', and 'OPTIONAL' in this document are to be interpreted as
+     described in BCP 14 (RFC 2119) (RFC 8174) when, and only when,
+     they appear in all capitals, as shown here.
+
+     This module defines the 'duplicate-rule' RPC, used to manage
+     the SCHC Rules with CORECONF.";
+
+  revision 2026-10-29 {
+    description
+      "Initial version, with the 'duplicate-rule' RPC moved from the
+       'ietf-schc' module.";
+    reference
+      "draft-toutain-schc-coreconf-management CORECONF Rule
+       management for SCHC";
+  }
+
+  rpc duplicate-rule {
+    if-feature "schc:management";
+    description
+      "Duplicate an existing Rule, given by 'from', into a new Rule,
+       given by 'to', which does not exist yet. The new Rule may be
+       updated with the CORECONF iPATCH payload carried in
+       'ipatch-sequence' before it is added to the Set of Rules.";
+    input {
+      container from {
+        description
+          "Rule ID of the existing Rule to duplicate.";
+        uses schc:rule-id-type;
+      }
+      container to {
+        description
+          "Rule ID of the new Rule.";
+        uses schc:rule-id-type;
+      }
+      leaf ipatch-sequence {
+        type binary;
+        description
+          "CBOR sequence of a CORECONF iPATCH payload, applied to the
+           new Rule before it is added. This parameter is optional;
+           when it is absent, the new Rule is an exact copy.";
+      }
+    }
+    output {
+      leaf status {
+        type enumeration {
+          enum success-with-validation {
+            value 0;
+            description
+              "The new Rule has been created and validated.";
+          }
+          enum success-not-validated {
+            value 1;
+            description
+              "The new Rule has been created, but not validated
+               yet.";
+          }
+          enum to-rule-already-exists {
+            value -1;
+            description
+              "The Rule ID given by 'to' already exists.";
+          }
+          enum from-rule-not-found {
+            value -2;
+            description
+              "The Rule ID given by 'from' does not exist.";
+          }
+          enum invalid-ipatch {
+            value -3;
+            description
+              "The 'ipatch-sequence' cannot be applied to the new
+               Rule.";
+          }
+        }
+        description
+          "Result of the duplication. A negative value indicates that
+           the duplication did not take place.";
       }
     }
   }
 }
 ~~~
+{: #Fig-yang-mgmt title="ietf-schc-rpc-duplicate YANG Module" sourcecode-name="ietf-schc-rpc-duplicate@2026-10-29.yang" sourcecode-markers="true"}
 
 # Management Rules {#sec-mgmt-rules-tables}
 
@@ -1508,6 +1606,12 @@ The following events do not change the status:
   the universal options are part of the "entry-universal" list.
 * "Duplicate Rule": the status is an enumeration, the example uses an
   "entry-index", and the YANG fragment of the annex is aligned with the module.
+* "YANG Module" appendix (was "YANG DM"): the "duplicate-rule" RPC is no longer
+  in the "ietf-schc" module of {{I-D.toutain-schc-rfc9363bis}}; it is defined in
+  the new "ietf-schc-rpc-duplicate" module of this document, which imports
+  "ietf-schc" and makes the RPC depend on its "management" feature. The
+  descriptions of the RPC and of its status values are completed. The CORECONF
+  examples use the "/ietf-schc-rpc-duplicate:duplicate-rule" path.
 * "Example CORECONF usage in Python": the YANG requests use the
   "entry-universal" paths; the SID values and CBOR encodings, which depend on
   the SID file of the new module revision, have been removed and have to be
