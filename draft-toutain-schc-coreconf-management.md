@@ -104,7 +104,7 @@ defines how data modeled in YANG are serialized in CBOR, and on
 specifies the compression Rules dedicated to the management traffic itself. They
 make control and configuration exchanges more efficient and are distinct from
 the compression applied to regular application data. Finally, it defines the
-"ietf-schc-basic-mgmt" YANG module ({{sec-yang-module}}), which provides an RPC
+"ietf-schc-mgmt-basic" YANG module ({{sec-yang-module}}), which provides an RPC
 to derive a Rule from an existing one and an RPC to reset the Set of Rules.
 
 # Terminology
@@ -592,8 +592,9 @@ considered as `free` before the end of its Guard period. The `origin` rules are
 not concerned, since they are part of the initial SoR. An end that restarts
 without its rules has only its `origin` rules: it SHOULD then reset the SoR with
 the "reset-context" RPC (see {{sec-reset-rpc}}), before any other management
-request, so that both ends come back to the same SoR. When the rules are kept,
-after a restart:
+request, so that both ends come back to the same SoR. 
+
+When the rules are kept, after a restart:
 
 * a `candidate` rule stays `candidate`, and the creation is repeated;
 * an `invalid` rule whose deletion has not been acknowledged stays `invalid`,
@@ -645,10 +646,10 @@ No other traffic uses this stack.
 ~~~
 {: #Fig-mgmt-stack title='Protocol stack of the management messages'}
 
-* IPv6 {{RFC8200}}: the management traffic does not use the IPv6 stack of the
-  application. Each node of the SCHC instance includes a second IPv6 stack, used
-  only for management. Only two link-local addresses are allowed on this stack:
-  fe80::1 for the Device and fe80::2 for the Core, on the application side (see
+* IPv6 {{RFC8200}}: the management traffic does not use the same interface as
+  the application. Each node of the SCHC instance includes a second IPv6
+  stack, used only for management. Only two link-local addresses are allowed on this stack:
+  `fe80::1` for the Device and `fe80::2` for the Core, on the application side (see
   {{sec-protocols}}). These IPv6 packets are only exchanged between the two
   nodes of the SCHC instance and are never forwarded outside of it. They are
   compressed with the management rules and, when they are larger than the MTU of
@@ -681,21 +682,20 @@ No other traffic uses this stack.
   {{sec-rpcs}}).
 
 
-## YANG Data Model
-CORECONF proposes an interface to manage data structured with a YANG Data Model.
+## CORECONF Interface
 
 {{RFC9363}} defines a YANG Data Model for SCHC Rules, updated by
 {{I-D.toutain-schc-rfc9363bis}} (module revision 2026-10-27). This document uses
 the updated model. SCHC Instance Management MUST use FETCH to read a rule and
-iPATCH to create or delete a rule, and RPCs to generate specific rules depending
-on RPC parameters, such as the RPCs of the "ietf-schc-basic-mgmt" module
+iPATCH to create a full rule or delete a rule, and RPCs to generate specific rules depending
+on RPC parameters, such as the RPCs of the "`ietf-schc-mgmt-basic`" module
 ({{sec-yang-module}}).
 
 Management rules have to be marked in a way that allows quickly identifying
 which rules in a SoR are responsible for management. Therefore, a
-"nature-management" Rule nature is defined, and the "management" feature enables
+"`nature-management`" Rule nature is defined, and the "management" feature enables
 it. A management Rule uses the compression Rule structure, but only the
-"entry-universal" list supports management Rules: the deprecated "entry" list
+"`entry-universal`" list supports management Rules: the deprecated "entry" list
 does not. Compression needs to be available and activated to do management.
 
 The technical choices of the management protocol stack ({{sec-mgmt-stack}})
@@ -720,18 +720,9 @@ A management message is therefore reduced to the Rule ID, a few bits of CoAP
 header and the CORECONF payload.
 
 ### Rule Status and Guard Period
-The status of a rule determines if it can be used (see "Rule status"). The
-"rule-status" leaf is defined only when the "management" feature is supported.
-Its type is an identityref based on "status-base-type", with five identities
-corresponding to the statuses `origin`, `valid`, `candidate`, `invalid` and
-`free`: "status-origin" (the default), "status-valid", "status-candidate",
-"status-invalid" and "status-free". "status-origin" is derived from
-"status-valid", so that a rule can be used for C/D and F/R when its status is
-"status-valid" or derived from it. A rule without "rule-status", such as a
-provisioned rule, is considered as "status-origin"; a rule created by management
-always carries its status.
 
-The "rule-status" leaf is managed locally by each node, which rewrites it
+
+The "`rule-status`" leaf is managed locally by each node, which rewrites it
 according to the protocol state of the rule (see {{sec-rule-status}} and
 {{sec-fsm}}). It is never set by the other node: a value received in the
 creation of a rule is ignored, and a request whose target is "rule-status" is
@@ -933,6 +924,11 @@ POST message can be sent to invoke a specific RPC on the remote endpoint.
 Details of the supported RPCs and their behavior are defined in Section
 {{sec-rpcs}}.
 
+This document defines the "`duplicate-rule`" and "`reset-context`" RPCs, in the
+"`ietf-schc-mgmt-basic`" YANG module ({{sec-yang-module}}). Other RPCs, adapted to
+the traffic in order to optimize the rule management for its patterns, may be
+defined by other documents, in other YANG modules.
+
 The input parameters of an RPC acting on some rules MUST provide the rule IDs of
 the rules on which the RPC is applied, so that both nodes know the rules
 concerned by the rule status procedures ({{sec-rule-status}}). An RPC acting on
@@ -954,7 +950,7 @@ There are different levels of error detection:
   as "must" or "mandatory". This check is optional, since it may require a lot
   of resources on a device.
 * SCHC errors: errors on the Data Model that cannot be detected at the YANG
-  level. For example, the rule numbering does not correspond to a binary tree.
+  level. For example, overlapping rule IDs.
 
 # RPCs {#sec-rpcs}
 
@@ -966,16 +962,9 @@ operations, such as rebooting the remote device endpoint.
 Each RPC resource has specific inputs and outputs, and may be invoked remotely
 via a POST CoAP message, as described in Section {{sec-post-method}}.
 
-This document defines the "duplicate-rule" and "reset-context" RPCs, in the
-"ietf-schc-basic-mgmt" YANG module ({{sec-yang-module}}). Other RPCs, adapted to
-the traffic in order to optimize the rule management for its patterns, may be
-defined by other documents, in other YANG modules.
+
 
 ## Duplicate Rule {#sec-duplicate-rule-rpc}
-
-{::comment}WARNING (modify): the optional ipatch-sequence modifies the copy
-before it is added. Check that it is still consistent with the prohibition (new
-rule only).{:/comment}
 
 To add a new rule, instead of using the iPATCH method with a full rule
 definition (especially when the new rule is similar to an existing one), the
@@ -995,7 +984,7 @@ never an `origin` rule.
 Represented as a tree:
 
 ~~~
-module: ietf-schc-basic-mgmt
+module: ietf-schc-mgmt-basic
 
   rpcs:
     +---x duplicate-rule {schc:management}?
@@ -1021,14 +1010,15 @@ the session characteristics.
 Example:
 
 - Representation with identifiers for clarity. Delta-encoded SIDs are used in a
-  real request.
+  real request. In the `ipatch-sequence`, 14 is the `entry-index` of the
+  target entry in the new Rule, and 0 is the `index` of its target value.
 
 ~~~
 REQ:  POST </c>
       (Content-Format: application/yang-instances+cbor-seq)
 
 {
-  "/ietf-schc-basic-mgmt:duplicate-rule":
+  "/ietf-schc-mgmt-basic:duplicate-rule":
   {
     "input/from/rule-id-value": 8,
     "input/from/rule-id-length": 4,
@@ -1036,8 +1026,7 @@ REQ:  POST </c>
     "input/to/rule-id-length": 4,
     "input/ipatch-sequence":
       [
-        "/ietf-schc:schc/rule/entry-universal/target-value/value", 9, 4,
-        14, 0,
+        "/ietf-schc:schc/rule/entry-universal/target-value/value", 14, 0,
       ]: b"\x14\x00"
   }
 }
@@ -1046,7 +1035,7 @@ RES:  2.04 Changed
       (Content-Format: application/yang-instances+cbor-seq)
 
 {
-  "/ietf-schc-basic-mgmt:duplicate-rule":
+  "/ietf-schc-mgmt-basic:duplicate-rule":
   {
     "output/status": "success-with-validation",
   }
@@ -1074,7 +1063,7 @@ management are removed. It has no input, and its output is a status.
 Represented as a tree:
 
 ~~~
-module: ietf-schc-basic-mgmt
+module: ietf-schc-mgmt-basic
 
   rpcs:
     +---x reset-context {schc:management}?
@@ -1126,14 +1115,14 @@ REQ:  POST </c>
       (Content-Format: application/yang-instances+cbor-seq)
 
 {
-  "/ietf-schc-basic-mgmt:reset-context": null
+  "/ietf-schc-mgmt-basic:reset-context": null
 }
 
 RES:  2.04 Changed
       (Content-Format: application/yang-instances+cbor-seq)
 
 {
-  "/ietf-schc-basic-mgmt:reset-context":
+  "/ietf-schc-mgmt-basic:reset-context":
   {
     "output/status": "success"
   }
@@ -1143,11 +1132,72 @@ RES:  2.04 Changed
 A node that is not allowed to reset the SoR of the other node refuses the
 request with 4.03 Forbidden.
 
+# Protocol Stack {#sec-protocols}
+
+The management inside the instance has its own IPv6 stack, independent of the
+application traffic. IPv6/UDP/CoAP is used to allow the implementation of the
+CORECONF interface. No other kind of traffic is allowed.
+
+The end-point acting as a Device has the IPv6 address fe80::1/64 and the other
+end, the Core, is assigned the address fe80::2/64.
+
+Both endpoints implement CoAP client and server capabilities, that is, both
+endpoints are capable of sending requests and processing responses. The server
+uses port 5683 and the client 3865.
+
+## Management Compression Rules {#sec-mgmt-rules}
+
+To enable CORECONF-based context and rule management over SCHC, a set of
+dedicated management rules is defined. These rules are used exclusively for
+management traffic, that is, packets exchanged between SCHC endpoints for the
+purpose of managing rules, not for application data transfer.
+
+This specification introduces four rules, allowing bidirectional operation and
+fine control over management capabilities. Each rule defines the compression
+behavior for management messages in its direction, distinguishing between
+requests and responses.
+
+* M1: the requests sent by the Device (Uplink), and their responses carrying a
+  payload (Downlink).
+* M2: the responses without payload to the requests sent by the Device
+  (Downlink).
+* M3: mirrors M1 for the requests sent by the Core (Downlink), and their
+  responses carrying a payload (Uplink).
+* M4: mirrors M2 for the responses without payload to the requests sent by the
+  Core (Uplink).
+
+Implementations MAY choose to support only a subset of these rules, depending on
+their operational or security requirements. For instance, an implementation may
+include only M3 and M4 to permit management operations exclusively from one
+endpoint, effectively preventing unsolicited management requests in the other
+direction. In this sense, the absence of some management rules in the SoR
+implicitly acts as a policy mechanism or safeguard for rule management
+operations.
+
+Management rules are protected elements within the SoR. They define the
+operation of the management channel itself: they are `origin` rules (see
+{{sec-rule-status}}), which cannot be modified or deleted, and in addition they
+MUST NOT be duplicated. Any attempt to apply a modification, duplication or
+deletion request to a management rule MUST result in a 4.03 Forbidden error
+response. This restriction ensures the integrity and stability of the SCHC
+management process, which is not interrupted by a reset of the SoR
+({{sec-reset-rpc}}).
+
+The four management rules are given in {{sec-mgmt-rules-tables}}.
+
+# OSCORE
+
+## Compression Rules
+
+# DTLS
+
+## Compression Rules
+
 # YANG Module {#sec-yang-module}
 
 The "ietf-schc" module, including the "management" feature, the "rule-status"
 leaf and the "context" container, is defined in {{I-D.toutain-schc-rfc9363bis}}
-(revision 2026-10-27). This document defines the "ietf-schc-basic-mgmt" module,
+(revision 2026-10-27). This document defines the "ietf-schc-mgmt-basic" module,
 which imports it and defines the "duplicate-rule" RPC
 ({{sec-duplicate-rule-rpc}}) and the "reset-context" RPC ({{sec-reset-rpc}}).
 The RPCs are only available when the "management" feature of "ietf-schc" is
@@ -1156,7 +1206,7 @@ supported.
 The tree of the module, following the notation of {{RFC8340}}, is:
 
 ~~~
-module: ietf-schc-basic-mgmt
+module: ietf-schc-mgmt-basic
 
   rpcs:
     +---x duplicate-rule {schc:management}?
@@ -1174,16 +1224,16 @@ module: ietf-schc-basic-mgmt
        +--ro output
           +--ro status?   enumeration
 ~~~
-{: #Fig-tree-rpc title='Tree of the ietf-schc-basic-mgmt YANG module'}
+{: #Fig-tree-rpc title='Tree of the ietf-schc-mgmt-basic YANG module'}
 
 {::comment}
 TODO: allocate a SID range and a SID file for this module, needed by CORECONF.
 {:/comment}
 
 ~~~ yang
-module ietf-schc-basic-mgmt {
+module ietf-schc-mgmt-basic {
   yang-version 1.1;
-  namespace "urn:ietf:params:xml:ns:yang:ietf-schc-basic-mgmt";
+  namespace "urn:ietf:params:xml:ns:yang:ietf-schc-mgmt-basic";
   prefix schc-bmgmt;
 
   import ietf-schc {
@@ -1327,290 +1377,7 @@ module ietf-schc-basic-mgmt {
   }
 }
 ~~~
-{: #Fig-yang-mgmt title="ietf-schc-basic-mgmt YANG Module" sourcecode-name="ietf-schc-basic-mgmt@2026-10-29.yang" sourcecode-markers="true"}
-
-# Protocol Stack {#sec-protocols}
-
-The management inside the instance has its own IPv6 stack, independent of the
-application traffic. IPv6/UDP/CoAP is used to allow the implementation of the
-CORECONF interface. No other kind of traffic is allowed.
-
-The end-point acting as a Device has the IPv6 address fe80::1/64 and the other
-end, the Core, is assigned the address fe80::2/64.
-
-Both endpoints implement CoAP client and server capabilities, that is, both
-endpoints are capable of sending requests and processing responses. The server
-uses port 5683 and the client 3865.
-
-## Management Compression Rules {#sec-mgmt-rules}
-
-To enable CORECONF-based context and rule management over SCHC, a set of
-dedicated management rules is defined. These rules are used exclusively for
-management traffic, that is, packets exchanged between SCHC endpoints for the
-purpose of managing rules, not for application data transfer.
-
-This specification introduces four rules, allowing bidirectional operation and
-fine control over management capabilities. Each rule defines the compression
-behavior for management messages in its direction, distinguishing between
-requests and responses.
-
-* M1: the requests sent by the Device (Uplink), and their responses carrying a
-  payload (Downlink).
-* M2: the responses without payload to the requests sent by the Device
-  (Downlink).
-* M3: mirrors M1 for the requests sent by the Core (Downlink), and their
-  responses carrying a payload (Uplink).
-* M4: mirrors M2 for the responses without payload to the requests sent by the
-  Core (Uplink).
-
-Implementations MAY choose to support only a subset of these rules, depending on
-their operational or security requirements. For instance, an implementation may
-include only M3 and M4 to permit management operations exclusively from one
-endpoint, effectively preventing unsolicited management requests in the other
-direction. In this sense, the absence of some management rules in the SoR
-implicitly acts as a policy mechanism or safeguard for rule management
-operations.
-
-Management rules are protected elements within the SoR. They define the
-operation of the management channel itself: they are `origin` rules (see
-{{sec-rule-status}}), which cannot be modified or deleted, and in addition they
-MUST NOT be duplicated. Any attempt to apply a modification, duplication or
-deletion request to a management rule MUST result in a 4.03 Forbidden error
-response. This restriction ensures the integrity and stability of the SCHC
-management process, which is not interrupted by a reset of the SoR
-({{sec-reset-rpc}}).
-
-The four management rules are given in {{sec-mgmt-rules-tables}}.
-
-# OSCORE
-
-## Compression Rules
-
-# DTLS
-
-## Compression Rules
-
-
-# Example CORECONF usage in Python
-
-In these examples, the entries of the Rules are numbered in the order of the
-IPv6 header (entry 0 is the IPv6 Version, 1 the Traffic Class, 2 the Flow Label,
-3 the Payload Length). The SID values and the CBOR encodings depend on the SID
-file of the module revision 2026-10-27 and are not shown.
-
-## Deletion cases
-
-* Delete root element (refused, see {{sec-reset-rpc}}):
-  
-  ~~~
-  YANG REQ: iPATCH /c
-  {
-    ('/ietf-schc:schc'): None
-  } 
-  
-  RES: 4.03 Forbidden
-  ~~~
-
-* Delete a specific rule:
-  
-  ~~~
-  YANG REQ: iPATCH /c
-  {
-    ('/ietf-schc:schc/rule', 0, 3): None
-  } 
-  
-  RES: 2.04 Changed
-  ~~~
-  
-* Delete a specific protocol field entry:
-  
-  ~~~
-  YANG REQ: iPATCH /c
-  {
-    ('/ietf-schc:schc/rule/entry-universal', 0, 3, 0): None
-  } 
-  
-  RES: 2.04 Changed
-  ~~~
-  
-* Delete a specific key:
-  
-  ~~~
-  YANG REQ: iPATCH /c
-  {
-    ('/ietf-schc:schc/rule/rule-status', 0, 3): None
-  } 
-  
-  RES: 2.04 Changed
-  ~~~
-  
-* Delete a list element:
-  
-  ~~~
-  YANG REQ: iPATCH /c
-  {
-    ('/ietf-schc:schc/rule/entry-universal/target-value/value',
-     0, 3, 0, 0): None
-  } 
-  
-  RES: 2.04 Changed
-  ~~~
-  
-* Delete a multiple list elements:
-  
-  ~~~
-  YANG REQ: iPATCH /c
-  {
-    ('/ietf-schc:schc/rule/entry-universal/target-value/value',
-     0, 3, 1, 1): None
-  } 
-  
-  RES: 2.04 Changed
-  ~~~
-  
-* Delete an unknown entry:
-  
-  ~~~
-  YANG REQ: iPATCH /c
-  {
-    ('/ietf-schc:schc/rule/entry-universal', 2, 3, 0): None
-  } 
-  
-  RES: 4.00 Bad Request
-  ~~~
-  
-* Delete a protected key:
-  
-  ~~~
-  YANG REQ: iPATCH /c
-  {
-    ('/ietf-schc:schc/rule/rule-id-value', 0, 3): None
-  } 
-  
-  RES: 4.00 Bad Request
-  ~~~
-
-{::comment}WARNING (modify): remove: modification of an existing rule is not
-allowed (rule-id-value, rule-status updates).{:/comment}
-
-## Update cases
-
-* Update protected key:
-  
-  ~~~
-  YANG REQ: iPATCH /c
-  {
-    ('/ietf-schc:schc/rule/rule-id-value', 0, 3): 5
-  } 
-  
-  RES: 2.04 Changed
-  ~~~
-
-* Update a specific key:
-  
-  ~~~
-  YANG REQ: iPATCH /c
-  {
-    ('/ietf-schc:schc/rule/rule-status', 0, 3): 'status-candidate'
-  } 
-  
-  RES: 2.04 Changed
-  ~~~
-
-## Addition cases
-
-* Add a new entry:
-  
-  ~~~
-  YANG REQ: iPATCH /c
-  {
-    ('/ietf-schc:schc/rule/entry-universal', 0, 3, 10): {
-        'field-id': 'ietf-schc:fid-ipv6-appprefix',
-        'field-length': 64, 
-        'field-position': 1,
-        'direction-indicator': 'ietf-schc:di-bidirectional',
-        'target-value': [{'index': 0, 'value': '/oAAAAAAAAA='}], 
-        'matching-operator': 'ietf-schc:mo-equal', 
-        'comp-decomp-action': 'ietf-schc:cda-not-sent'
-    }
-  } 
-  
-  RES: 2.04 Changed
-  ~~~
-
-* Add a list element (auto-indexed)
-  
-  ~~~
-  YANG REQ: iPATCH /c
-  {
-    ('/ietf-schc:schc/rule/entry-universal/target-value', 0, 3, 2): {
-        'index': 4, 'value': 'vLw='
-    }
-  } 
-  
-  RES: 2.04 Changed
-  ~~~
-
-* Add a list element (explicit index):
-  
-  ~~~
-  YANG REQ: iPATCH /c
-  {
-    ('/ietf-schc:schc/rule/entry-universal/target-value', 0, 3, 2): {
-        'index': 7, 'value': 'vLw='
-    }
-  } 
-  
-  RES: 2.04 Changed
-  ~~~
-
-* Add a new key–value pair element:
-  
-  ~~~
-  YANG REQ: iPATCH /c
-  {
-    ('/ietf-schc:schc/rule/entry-universal/target-value', 0, 3, 3): [
-        {'index': 0, 'value': 'UA=='}, 
-        {'index': 1, 'value': 'VQ=='}
-    ]
-  } 
-  
-  RES: 2.04 Changed
-  ~~~
-
-* Add a new rule:
-  
-  ~~~
-  YANG REQ: iPATCH /c
-  {
-    ('/ietf-schc:schc/rule', 5, 3): {
-        'rule-status': 'ietf-schc:status-valid', 
-        'rule-id-value': 10, 
-        'rule-id-length': 5, 
-        'rule-nature': 'ietf-schc:nature-compression'
-    }
-  } 
-  
-  RES: 2.04 Changed
-  ~~~
-
-* Add an entry into an unknown rule:
-  
-  ~~~
-  YANG REQ: iPATCH /c
-  {
-    ('/ietf-schc:schc/rule/entry-universal', 250, 8, 3): {
-        'field-id': 'ietf-schc:fid-ipv6-payload-length',
-        'field-length': 16, 
-        'field-position': 1,
-        'direction-indicator': 'ietf-schc:di-bidirectional',
-        'matching-operator': 'ietf-schc:mo-ignore', 
-        'comp-decomp-action': 'ietf-schc:cda-value-sent'
-    }
-  } 
-  
-  RES: 4.00 Bad Request
-  ~~~
+{: #Fig-yang-mgmt title="ietf-schc-mgmt-basic YANG Module" sourcecode-name="ietf-schc-mgmt-basic@2026-10-29.yang" sourcecode-markers="true"}
 
 # Security Considerations {#sec-security}
 
@@ -1621,7 +1388,7 @@ cannot be modified or deleted, and the management rules cannot be duplicated
 ({{sec-rule-status}}, {{sec-mgmt-rules}}). The `origin` status is only set by
 provisioning: a node cannot make a rule permanent on the other node.
 
-The "ietf-schc-basic-mgmt" YANG module defines two RPCs that change the SoR:
+The "ietf-schc-mgmt-basic" YANG module defines two RPCs that change the SoR:
 
 * "duplicate-rule" creates a Rule. Creating a Rule changes the way the packets
   are compressed, decompressed, fragmented, and reassembled, and an
@@ -1642,7 +1409,7 @@ IANA is requested to register the following URI in the "ns" subregistry of the
 "IETF XML Registry" {{RFC3688}}:
 
 URI:
-: urn:ietf:params:xml:ns:yang:ietf-schc-basic-mgmt
+: urn:ietf:params:xml:ns:yang:ietf-schc-mgmt-basic
 
 Registrant Contact:
 : The IESG.
@@ -1656,10 +1423,10 @@ IANA is requested to register the following YANG module in the "YANG Module
 Names" registry {{RFC6020}}:
 
 Name:
-: ietf-schc-basic-mgmt
+: ietf-schc-mgmt-basic
 
 Namespace:
-: urn:ietf:params:xml:ns:yang:ietf-schc-basic-mgmt
+: urn:ietf:params:xml:ns:yang:ietf-schc-mgmt-basic
 
 Prefix:
 : schc-bmgmt
@@ -1834,10 +1601,10 @@ Conflict) and 160 (5.00 Internal Server Error).
 
 # Rule Status State Machine {#sec-fsm}
 
-{{Fig-fsm}} summarizes the statuses of a rule on one end, and the transitions
+{{Fig-fsm}} summarizes the statuses of a rule on one node, and the transitions
 described in {{sec-rule-status}}. The `invalid` status has two phases: the Guard
 period is either waiting for the acknowledgement of the deletion sent by this
-end, or running. The `origin` status is not shown: an `origin` rule is set by
+node, or running. The `origin` status is not shown: an `origin` rule is set by
 provisioning and never changes status.
 
 ~~~ aasvg
@@ -1859,15 +1626,15 @@ provisioning and never changes status.
                               |   ^
                               +---+ T9
 ~~~
-{: #Fig-fsm title='Rule status state machine on one end'}
+{: #Fig-fsm title='Rule status state machine on one node'}
 
-* T1, `free` to `candidate`: the end decides to create a rule, with a rule ID in
+* T1, `free` to `candidate`: the node decides to create a rule, with a rule ID in
   its part of the rule ID space (see {{sec-simultaneous-creation}}) that does
   not overlap an existing rule ID. A rule ID whose Guard period has just ended
   SHOULD NOT be chosen (see {{sec-guard-computation}}). It sends the creation.
-* T2, `free` to `valid`: a creation is received. The end answers 2.04 Changed.
+* T2, `free` to `valid`: a creation is received. The node answers 2.04 Changed.
 * T3, `candidate` to `candidate`: the CoAP exchange is abandoned, in particular
-  when the other end restarts (see {{sec-restart}}), or the end restarts. The
+  when the other end restarts (see {{sec-restart}}), or the node restarts. The
   creation is repeated later, with an increasing delay. A Device that receives a
   creation for this rule ID answers 4.09 Conflict.
 * T4, `candidate` to `valid`: 2.04 Changed is received for the creation, a SCHC
@@ -1876,30 +1643,30 @@ provisioning and never changes status.
   the received rule replaces the `candidate` one, and the Core answers 2.04
   Changed. In all cases, the creation stops.
 * T5, `candidate` to `invalid`: a deletion is received (the Guard period starts,
-  the creation stops, the end answers 2.04 Changed), or the end gives up the
+  the creation stops, the node answers 2.04 Changed), or the node gives up the
   rule, in particular when 4.09 Conflict is received for the creation, and
   sends a deletion (the Guard period waits for the acknowledgement).
-* T6, `valid` to `invalid`: the end sends a deletion (the Guard period waits for
-  the acknowledgement), or receives one (the Guard period starts, the end
+* T6, `valid` to `invalid`: the node sends a deletion (the Guard period waits for
+  the acknowledgement), or receives one (the Guard period starts, the node
   answers 2.04 Changed).
 * T7, `free` to `invalid`: a deletion is received for a free rule ID. The Guard
-  period starts, and the end answers 2.04 Changed.
+  period starts, and the node answers 2.04 Changed.
 * T8, `invalid` to `free`: the Guard period is over. The rule is marked `free`
   or removed from the SoR.
 * T9, `invalid` to `invalid`:
-  * 2.04 Changed is received for the deletion sent by the end: the Guard period
+  * 2.04 Changed is received for the deletion sent by the node: the Guard period
     starts;
-  * the CoAP exchange of the deletion is abandoned, or the end restarts while
+  * the CoAP exchange of the deletion is abandoned, or the node restarts while
     waiting for the acknowledgement: the deletion is repeated;
-  * a deletion is received: the end answers 2.04 Changed, and the Guard period
+  * a deletion is received: the node answers 2.04 Changed, and the Guard period
     restarts, unless it is waiting for the acknowledgement of the deletion sent
-    by the end;
-  * a creation is received: the end answers 4.09 Conflict;
-  * the end restarts while the Guard period is running: a new, complete Guard
+    by the node;
+  * a creation is received: the node answers 4.09 Conflict;
+  * the node restarts while the Guard period is running: a new, complete Guard
     period starts.
 * T10, any status except `origin` to `invalid` (not shown in the figure): the
-  end sends a reset (the Guard period waits for the acknowledgement), or
-  receives one (the Guard period starts, the end answers 2.04 Changed), see
+  node sends a reset (the Guard period waits for the acknowledgement), or
+  receives one (the Guard period starts, the node answers 2.04 Changed), see
   {{sec-reset-rpc}}. This also applies to a rule ID absent from the SoR.
 
 The following events do not change the status:
@@ -1969,7 +1736,7 @@ The following events do not change the status:
   `invalid` for a Guard period. Applying it only at the reception of the
   response leads both nodes to disagree on the SoR. An end that restarts without
   its rules should reset the SoR.
-* The YANG module is named "ietf-schc-basic-mgmt" (prefix "schc-bmgmt"), for
+* The YANG module is named "ietf-schc-mgmt-basic" (prefix "schc-bmgmt"), for
   the basic management operations, and contains both RPCs; IANA and Security
   Considerations are updated.
 * "Idempotent creation": a creation received during the Guard period is
@@ -1997,10 +1764,10 @@ The following events do not change the status:
   instead of an Unauthorized one.
 * "YANG Module" appendix (was "YANG DM"): the "duplicate-rule" RPC is no longer
   in the "ietf-schc" module of {{I-D.toutain-schc-rfc9363bis}}; it is defined in
-  the new "ietf-schc-basic-mgmt" module of this document, which imports
+  the new "ietf-schc-mgmt-basic" module of this document, which imports
   "ietf-schc" and makes the RPC depend on its "management" feature. The
   descriptions of the RPC and of its status values are completed. The CORECONF
-  examples use the "/ietf-schc-basic-mgmt:duplicate-rule" path.
+  examples use the "/ietf-schc-mgmt-basic:duplicate-rule" path.
 * "Example CORECONF usage in Python": the YANG requests use the
   "entry-universal" paths; the SID values and CBOR encodings, which depend on
   the SID file of the new module revision, have been removed and have to be
@@ -2097,9 +1864,6 @@ The following events do not change the status:
 {:unnumbered}
 
 The authors sincerely thank Corentin Banier for his contributions to this work.
-
-This work was supported by the Sweden's Innovation Agency VINNOVA within the
-EUREKA CELTIC-NEXT project CYPRESS.
 
 This work has been supported by the SCHC Chair from IMT Atlantique and Afnic.
 
