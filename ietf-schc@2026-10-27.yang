@@ -90,7 +90,9 @@ module ietf-schc {
          required by 'fl-length-bytes' and 'fl-length-bits', and the
          per-option CoAP Field IDs are rejected. The Target Value is
          no longer required for 'cda-compress-sent' and
-         'cda-rev-compress-sent'.";
+         'cda-rev-compress-sent'.
+       - New RCS algorithm: 'rcs-frag-count' identity, for the RCS
+         of SCHC over Sigfox (RFC 9442).";
     reference
       "RFC XXXX A YANG Data Model for Static Context Header
                 Compression (SCHC)";
@@ -1273,6 +1275,17 @@ module ietf-schc {
     reference
       "RFC 8724 SCHC: Generic Framework for Static Context Header
                 Compression and Fragmentation";
+  }
+
+  identity rcs-frag-count {
+    base rcs-algorithm-base-type;
+    description
+      "The RCS carries the number of fragments in the last window,
+       including the All-1 fragment, instead of a check computed on
+       the SCHC Packet.  The RCS has the same size as the FCN field
+       (fcn-size).";
+    reference
+      "RFC 9442 SCHC over Sigfox LPWAN";
   }
 
   typedef rcs-algorithm-type {

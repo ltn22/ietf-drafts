@@ -61,6 +61,7 @@ normative:
   I-D.ietf-schc-8824-update:
 informative:
   RFC9441:
+  RFC9442:
   I-D.ietf-lpwan-architecture:
   I-D.toutain-schc-coreconf-management:
   I-D.ietf-core-oscore-key-update:
@@ -89,26 +90,21 @@ for the compression of ICMPv6 and features for the management of the Rules.
 # Introduction {#Introduction}
 
 SCHC is a compression and fragmentation mechanism for constrained networks
-defined in {{RFC8724}}. It is based on a static context shared by two entities
-at the boundary of the constrained network. {{RFC8724}} provides an informal
-representation of the Rules used either for compression/decompression (C/D) or
-fragmentation/reassembly (F/R), and {{RFC9363}} a YANG data model dedicated to
-LPWAN environments, where the Rules were most of the time installed directly in
-the SCHC end-points.
+defined in {{RFC8724}}. It is initially based on a static context shared by
+two entities at the boundary of the constrained network. {{RFC8724}} provides
+an informal representation of the Rules used either for
+compression/decompression (C/D) or fragmentation/reassembly (F/R), and
+{{RFC9363}} a YANG data model dedicated to LPWAN environments, where the
+Rules were most of the time installed directly in the SCHC end-points.
+
+This revision of the data model extends the usage of SCHC to environments
+other than LPWANs.
 
 This document defines a YANG data model {{RFC7950}} to represent compression,
 fragmentation, and management Rules, which leads to common representation for
-values for all the Rules' elements. This data model is a revision of the
-`ietf-schc` module of {{RFC9363}}, and not an augmentation such as the one
-defined in {{I-D.ietf-schc-universal-option}}, since the key of the compression
-Rule entries is changed. A single entry index replaces the Field ID, the Field
-Position and the Direction Indicator, which makes the key shorter and keeps the
-entries strictly ordered as the fields in the header {{RFC8724}}. Since the key
-of a list cannot be changed in a published module ({{Section 11 of RFC7950}}),
-a new list is defined and the previous one is deprecated.
-
-The goal of this document is to update the formal description of the Rules, to
-extend SCHC to new environments, and to offer:
+values for all the Rules' elements. The goal of this document is to update
+the formal description of the Rules, to extend SCHC to new environments, and
+to offer:
 
 * the same definition on both ends, even if the internal representation is
   different,
@@ -118,6 +114,12 @@ extend SCHC to new environments, and to offer:
   and delete Rules using CORECONF
   {{I-D.toutain-schc-coreconf-management}}.
 
+This data model is a revision of the `ietf-schc` module of {{RFC9363}}, and
+not an augmentation such as the one defined in
+{{I-D.ietf-schc-universal-option}}, since the key of the compression Rule
+entries is changed. Since the key of a list cannot be changed in a published
+module ({{Section 11 of RFC7950}}), a new list is defined and the previous
+one is deprecated.
 
 # Requirements Language {#requirements-language}
 
@@ -227,15 +229,15 @@ specify fields for IPv6 {{RFC8200}}, UDP {{RFC0768}}, and CoAP {{RFC7252}},
 including options defined for no server response {{RFC7967}} and Object
 Security for Constrained RESTful Environments (OSCORE) {{RFC8613}}, with its
 Key Update (KUDOS) extension {{I-D.ietf-core-oscore-key-update}}. For the
-latter, {{RFC8824}} and {{I-D.ietf-schc-universal-option}} split this field
-into subfields.
+latter, {{RFC8824}}, {{I-D.ietf-schc-8824-update}}, and
+{{I-D.ietf-schc-universal-option}} split this field into subfields.
 {{I-D.ietf-schc-icmpv6-compression}} specifies fields for ICMPv6 {{RFC4443}}.
 
 SCHC fragmentation requires a set of common parameters that are included in a
 Rule. These parameters are defined in {{RFC8724}}.
 
 The YANG data model enables the compression, the fragmentation, and the
-management selection using the feature statement.
+management to be selected separately using the feature statement.
 
 ## Main Updates from RFC 9363 {#update-from-rfc9363}
 
@@ -253,6 +255,8 @@ The main updates of the YANG data model defined in {{RFC9363}} are:
   {{convention-for-field-length}}), Matching Operators (see
   {{convention-for-matching-operator}}), and Compression Decompression Actions
   (see {{convention-for-compression-decompression-actions}}).
+* RCS algorithm: a new identity, `rcs-frag-count`, for the RCS of SCHC over
+  Sigfox {{RFC9442}} (see {{last-fragment-format}}).
 * Action: a compression Rule can carry an Action, applied to the packets
   matching it {{I-D.ietf-schc-icmpv6-compression}} (see
   {{convention-for-action}}).
@@ -261,6 +265,8 @@ The main updates of the YANG data model defined in {{RFC9363}} are:
   {{management-rule}} and {{yang-tree}}).
 
 ## Compression Rules {#comp_types}
+
+Compression is optional in the data model and depends on the presence of the `compression` feature.
 
 {{RFC8724}} proposes an informal representation of the compression Rule.
 A compression context for a device is composed of a set of Rules. Each Rule contains information to
@@ -377,7 +383,7 @@ defined from `space-id-base-type`, following the principle shown in
 
 `fid-base-type` and `space-id-base-type` derive from a common ancestor,
 `space-field-id-base-type`. A compression Rule entry contains either a
-`field-id` or a `space-id` with its `universal-value` (see
+`field-id` or a `space-id` with its associated `universal-value` (see
 {{compression-rule}}).
 
 This document deprecates some CoAP Field IDs originally defined in {{RFC9363}}
@@ -469,10 +475,10 @@ named by the Action. The Action applies to the Rule as a whole, and not to a
 single entry.
 
 The naming convention is `action-` followed by the Action name. The type is
-`action-type`. The default Action is `action-forward`: the packet is sent to
-the lower layer, as specified in {{RFC8724}}, so a Rule without an Action
-behaves as in {{RFC8724}}. {{I-D.ietf-schc-icmpv6-compression}} defines
-`action-proxy-ping`.
+`action-type`. The default Action is `action-forward`: the packet is
+compressed and sent to the lower layer, as specified in {{RFC8724}}, so a Rule
+without an Action behaves as in {{RFC8724}}.
+{{I-D.ietf-schc-icmpv6-compression}} defines `action-proxy-ping`.
 
 ### Action Arguments {#action-arguments}
 
@@ -489,7 +495,7 @@ The SCHC Compound ACK {{RFC9441}} augments this data model with the
 `ietf-schc-compound-ack` module, to acknowledge several windows in a single
 SCHC ACK message in the ACK-on-Error mode. This augmentation remains valid
 for the data model defined in this document, since the fragmentation part of
-the module, augmented by {{RFC9441}}, is unchanged.
+the module.
 
 Most of the fragmentation parameters are listed in {{Appendix D of RFC8724}}.
 
@@ -527,11 +533,27 @@ A data fragment header, starting with the RuleID, can be sent in the fragmentati
 
 ### Last Fragment Format {#last-fragment-format}
 
-The last fragment of a datagram is sent with a Reassembly Check Sequence (RCS) field to detect residual
-transmission errors and possible losses in the last window. {{RFC8724}} defines a single algorithm based on Ethernet
-CRC computation.
+The last fragment of a datagram (the All-1 fragment) is sent with a
+Reassembly Check Sequence (RCS) field to detect residual transmission errors
+and possible losses in the last window. {{RFC8724}} recommends that the sender
+computes the RCS on the full SCHC Packet, and that the receiver compares it
+with the RCS computed after reassembly. A Profile specifies how the integrity
+is checked.
 
-The naming convention is `rcs-` followed by the algorithm name.
+The algorithm is given by the `rcs-algorithm` leaf, of type
+`rcs-algorithm-type`, and also defines the size of the RCS field.
+{{RFC8724}} recommends the CRC32 of the Ethernet standard as the default
+algorithm, identified by `rcs-crc32` (32 bits), which is the default value of
+the leaf. The naming convention is `rcs-` followed by the algorithm name. New
+algorithms are defined by deriving new identities from
+`rcs-algorithm-base-type` (see {{Fig-identityref}}).
+
+A Profile can use another kind of RCS. For instance, SCHC over Sigfox
+{{RFC9442}} uses an RCS which carries the number of fragments in the last
+window, including the All-1 fragment, instead of a check computed on the SCHC
+Packet. This RCS is identified by `rcs-frag-count`. Its size depends on the
+header format (3 to 5 bits) and is the same as the size of the FCN field, set
+by the `fcn-size` leaf of the Rule.
 
 For ACK-on-Error mode, the All-1 fragment may just contain the RCS or can include a tile. The following parameters define the
 behavior:
@@ -612,18 +634,7 @@ Three natures of Rules are defined in {{RFC8724}}:
   `entry-universal` list. Management is optional, and the feature
   `management` should be set.
 
-The YANG data model respectively introduces these four identities:
-
-* `nature-compression`
-* `nature-no-compression`
-* `nature-fragmentation`
-* `nature-management`
-
 The naming convention is `nature-` followed by the nature identifier.
-
-To access a specific Rule, the RuleID length and value are used as a key. The
-Rule is either a compression, a no-compression, a fragmentation, or a
-management Rule.
 
 ## Compression Rule {#compression-rule}
 
@@ -637,17 +648,17 @@ the `compression-content-universal` grouping, used by the
 `compression-universal` case. {{I-D.ietf-schc-universal-option}} explains this
 change.
 
-Universal Options give more flexibility in the management of the options.
+Universal Option gives more flexibility in the management of the options.
 Defining a new SCHC Field ID identityref for each option requires the SCHC
-data model to be updated each time a protocol defines a new option. With
+data model to be updated each time a protocol defines a new option as a Field ID. With
 Universal Options, only a Space ID identity is defined in the SCHC data model,
 and the entry carries the option number used by the protocol (see
 {{convention-for-space-identifier}}). Any new option defined by a protocol can
 then be added to a Rule without updating the data model.
 
 To avoid long keys to access a specific entry, the `entry-index` leaf is the
-key of the `entry-universal` list, instead of the Field ID, the Field Position
-and the Direction Indicator. It also guarantees the order of the entries
+key of the `entry-universal` list, instead of the tuple: Field ID,  Field Position
+and Direction Indicator. It also guarantees the order of the entries
 inside a Rule, an order reinforced by the "ordered-by user" statement of the
 list. Each entry of `entry-universal` represents a line in {{Fig-ctxt}}, and
 contains either a `field-id` or a `space-id` with its `universal-value`.
@@ -656,10 +667,6 @@ The Field Length also includes a parameter, the `field-length-value` leaf,
 used by the new functions `fl-length-bytes` and `fl-length-bits`, which
 generalize functions such as `fl-token-length` (see
 {{convention-for-field-length}}).
-
-The deprecated `compression-content` grouping defines a list of
-`compression-rule-entry`, indexed by their Field ID, position, and direction.
-Their type reflects the identifier types defined in {{comp_types}}.
 
 This change also deprecates the per-option CoAP Field IDs, since a CoAP option
 can be represented as a Universal Option with the tuple (`space-id-coap`,
@@ -945,7 +952,9 @@ module ietf-schc {
          required by 'fl-length-bytes' and 'fl-length-bits', and the
          per-option CoAP Field IDs are rejected. The Target Value is
          no longer required for 'cda-compress-sent' and
-         'cda-rev-compress-sent'.";
+         'cda-rev-compress-sent'.
+       - New RCS algorithm: 'rcs-frag-count' identity, for the RCS
+         of SCHC over Sigfox (RFC 9442).";
     reference
       "RFC XXXX A YANG Data Model for Static Context Header
                 Compression (SCHC)";
@@ -2128,6 +2137,17 @@ module ietf-schc {
     reference
       "RFC 8724 SCHC: Generic Framework for Static Context Header
                 Compression and Fragmentation";
+  }
+
+  identity rcs-frag-count {
+    base rcs-algorithm-base-type;
+    description
+      "The RCS carries the number of fragments in the last window,
+       including the All-1 fragment, instead of a check computed on
+       the SCHC Packet.  The RCS has the same size as the FCN field
+       (fcn-size).";
+    reference
+      "RFC 9442 SCHC over Sigfox LPWAN";
   }
 
   typedef rcs-algorithm-type {
