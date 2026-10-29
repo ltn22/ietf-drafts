@@ -242,6 +242,27 @@ Rule. These parameters are defined in {{RFC8724}}.
 The YANG data model enables the compression, the fragmentation, and the
 management selection using the feature statement.
 
+## Main Updates from RFC 9363 {#update-from-rfc9363}
+
+The main updates of the YANG data model defined in {{RFC9363}} are:
+
+* Compression Rule entries: a new list of entries, keyed by an entry index,
+  replaces the previous one, which is deprecated (see {{Introduction}} and
+  {{compression-rule}}).
+* Universal Options: an entry can reference a protocol option by a Space ID
+  and its option number, and the per-option CoAP Field IDs are deprecated (see
+  {{convention-for-space-identifier}}).
+* New identifiers: Field IDs for ICMPv6 and for the OSCORE and KUDOS subfields
+  (see {{convention-for-field-identifier}}), Field Length functions (see
+  {{convention-for-field-length}}), Matching Operators (see
+  {{convention-for-matching-operator}}), and Compression Decompression Actions
+  (see {{convention-for-compression-decompression-actions}}).
+* Action: a compression Rule can carry an Action, applied to the packets
+  matching it (see {{convention-for-action}}).
+* Rule management: a new feature, a new Rule nature, a Guard period, a status
+  for each Rule, and an RPC to duplicate a Rule (see {{Term}} and
+  {{yang-tree}}).
+
 ## Compression Rules {#comp_types}
 
 {{RFC8724}} proposes an informal representation of the compression Rule.
@@ -2364,6 +2385,9 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
 * Conventions for Field Length, Matching Operator, CDA, and Action: the new
   identities are listed, and their behavior is described in the documents
   that define them.
+* New section "Main Updates from RFC 9363": main updates of the YANG data
+  model, with the sections describing them.
+* YANG module: `fid-oscore-base-type`, not used as a base, is deprecated.
 * Editorial: the identifiers of the YANG data model are written in courier in
   the text.
 * References: RFC 7950 (YANG 1.1) becomes normative, since the deprecation

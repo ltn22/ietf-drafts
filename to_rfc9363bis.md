@@ -100,10 +100,10 @@ Add the following subsections:
   "-sequence", "-payload".
 * Generic Field IDs (bis: ICMPv6, New FID): "fid-unused" (to skip a part of
   a header) and "fid-payload" (last entry of a Rule, with "fl-remaining").
-* Remove "fid-oscore-base-type": it was never used as a base. Warning: this
+* ~~Remove "fid-oscore-base-type": it was never used as a base. Warning: this
   identity is published in RFC 9363; RFC 7950, Section 11, does not allow to
   remove it, so it should be marked "status deprecated" (or "obsolete")
-  instead of being removed.
+  instead of being removed.~~ Deprecated in the YANG module.
 
 ### 5.4 Convention for Field Length (Section 4.4)
 
@@ -191,7 +191,7 @@ bis: Rule Management. Content to add:
   (2025-11-24 to 2026-10-27, never published) with a single revision
   statement for the new RFC, describing all the changes, followed by the
   2023-03-01 revision of RFC 9363.
-* Fix "fid-oscore-base-type" (see 5.3).
+* ~~Fix "fid-oscore-base-type" (see 5.3).~~
 * Update the module description (RFC number, new features).
 
 ## 9. IANA Considerations (RFC 9363 Section 7)
@@ -240,5 +240,5 @@ translation (draft-toutain-core-private-sid-translation).
   before its creation.
 * "rule-status": declare it "config false", since it is managed locally by
   each node (draft-toutain-schc-coreconf-management)?
-* "fid-oscore-base-type": deprecate instead of remove (see 5.3).
+* ~~"fid-oscore-base-type": deprecate instead of remove (see 5.3).~~
 * Security and IANA sections of the bis are still TODO.

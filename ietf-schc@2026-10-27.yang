@@ -95,12 +95,11 @@ module ietf-schc {
        (space-id-coap / universal-value). Rename the '-v2'
        compression-rule-entry/compression-content/case suffix to
        '-universal'. Fix the space-id-coap identity description and
-       reference, mistakenly copy-pasted from fid-ipv6-*. Remove the
+       reference, mistakenly copy-pasted from fid-ipv6-*. Deprecate the
        unused fid-oscore-base-type identity: it was never used as a
        base by any other identity (the OSCORE suboption FIDs derive
-       directly from fid-coap-option) and was never part of a
-       published RFC, so it can simply be dropped rather than
-       deprecated.";
+       directly from fid-coap-option), but it is published in
+       RFC 9363 and cannot be removed (RFC 7950, Section 11).";
   }
 
   revision 2026-05-07 {
@@ -651,6 +650,18 @@ module ietf-schc {
     reference
       "RFC 7967 Constrained Application Protocol (CoAP) Option for
                 No Server Response";
+  }
+
+  identity fid-oscore-base-type {
+    base fid-coap-option;
+    status deprecated;
+    description
+      "OSCORE options (RFC8613) split in suboptions. Deprecated: this
+       identity is not used as a base, the OSCORE suboption Field IDs
+       derive from fid-coap-option.";
+    reference
+      "RFC 8824 Static Context Header Compression (SCHC) for the
+                Constrained Application Protocol (CoAP)";
   }
 
   identity fid-coap-option-oscore-flags {
