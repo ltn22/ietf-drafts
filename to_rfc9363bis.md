@@ -192,10 +192,11 @@ Rule Definition:
   type "status-type", with the identities "status-valid", "status-candidate",
   "status-invalid" and "status-free". The procedures are defined in
   draft-toutain-schc-coreconf-management: refer to it rather than copying
-  them.~~
+  them.~~ Then "status-origin" (derived from "status-valid") added and made
+  the default, for the rules of the initial SoR (2026-10-29).
 * ~~"duplicate-rule" RPC: "from" and "to" Rule IDs, optional
   "ipatch-sequence", "status" enumeration as output.~~ Moved to
-  draft-toutain-schc-coreconf-management (module ietf-schc-rpc-duplicate).
+  draft-toutain-schc-coreconf-management (module ietf-schc-basic-mgmt).
 
 ## 8. YANG Data Model (RFC 9363 Section 6)
 

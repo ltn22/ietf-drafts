@@ -199,8 +199,8 @@ RuleID:
 : Rule Identifier. An identifier for a Rule. SCHC C/D on both sides share the same RuleID for a given packet. A set of RuleIDs are used to support SCHC F/R functionality.
 
 Rule Status:
-: State of a Rule in the management protocol: valid, candidate, invalid, or
-  free (see {{I-D.toutain-schc-coreconf-management}}).
+: State of a Rule in the management protocol: origin, valid, candidate,
+  invalid, or free (see {{I-D.toutain-schc-coreconf-management}}).
 
 Space ID:
 : Identifier of a protocol option space, such as the CoAP options.
@@ -714,9 +714,9 @@ ACK {{RFC9441}} augments it to allow several bitmaps in a SCHC ACK message.
 
 Management Rules are defined in {{I-D.toutain-schc-coreconf-management}}. They
 allow a SCHC instance to modify the Set of Rules they belong to, except the
-management Rules themselves. A management Rule uses the compression Rule
-structure, with the `entry-universal` list, and the `nature-management`
-nature.
+origin Rules, which include the management Rules themselves (see below). A
+management Rule uses the compression Rule structure, with the `entry-universal`
+list, and the `nature-management` nature.
 
 {{I-D.toutain-schc-coreconf-management}} also introduces a Guard period,
 during which a deleted Rule ID MUST NOT be reused. This information is global
@@ -729,9 +729,15 @@ indicate whether a Rule can be used or not. The `rule-status` leaf is only
 present when the `management` feature is activated. Its type is
 `status-type`, and its values are:
 
-* `status-valid`: the Rule belongs to the Set of Rules and can be used. This is
-  the default value. Only the Rules with this status can be used for
-  compression, decompression, fragmentation, and reassembly.
+* `status-origin`: the Rule belongs to the initial Set of Rules, provisioned
+  before the start of the SCHC instance. It cannot be modified or deleted by
+  management, and it is the only kind of Rule kept when the context is reset.
+  This is the default value: a provisioned Rule without `rule-status` is an
+  origin Rule, while a Rule created by management always carries its status.
+* `status-valid`: the Rule belongs to the Set of Rules and can be used. Only
+  the Rules with this status, or with `status-origin`, which is derived from
+  it, can be used for compression, decompression, fragmentation, and
+  reassembly.
 * `status-candidate`: the Rule has been created by management, but the other
   end has not validated it yet. It cannot be used.
 * `status-invalid`: the Rule has been deleted by management, and the Guard
@@ -739,13 +745,16 @@ present when the `management` feature is activated. Its type is
 * `status-free`: the Rule ID can be used to create a new Rule. A Rule with
   this status is processed as if it did not exist in the Set of Rules.
 
-Management Rules are always valid: their status is always `status-valid`.
+Management Rules are origin Rules: their status is always `status-origin`.
 
 The naming convention is `status-` followed by the status name.
 
 The value of `rule-status` is a local view of the state of the management
 protocol machine of the node for this Rule. It is managed locally by the node,
-and any value sent by the other end is overwritten.
+and any value sent by the other end is overwritten. In particular,
+`status-origin` is only set by provisioning, never by management. The
+procedures, including the reset of the context, are described in
+{{I-D.toutain-schc-coreconf-management}}.
 
 ## YANG Tree {#yang-tree}
 
@@ -2586,8 +2595,8 @@ module ietf-schc {
     description
       "Identify a management Rule. Management Rules use the
        compression Rule structure to operate on the SCHC Context.
-       Management Rules are always valid: their status is always
-       'status-valid'.";
+       Management Rules are origin Rules: their status is always
+       'status-origin'.";
   /* Reference to be added when the Rule Management specification
      is available. */
   }
@@ -2601,8 +2610,20 @@ module ietf-schc {
     base status-base-type;
     description
       "The Rule belongs to the Set of Rules and can be used. Only
-       the Rules with this status can be used for compression,
-       decompression, fragmentation, and reassembly.";
+       the Rules with this status, or with a status derived from
+       it, can be used for compression, decompression,
+       fragmentation, and reassembly.";
+  }
+
+  identity status-origin {
+    base status-valid;
+    description
+      "The Rule belongs to the initial Set of Rules, provisioned
+       before the start of the SCHC instance. It is valid, and it
+       cannot be modified or deleted by management. The management
+       Rules are origin Rules. When the context is reset, only the
+       origin Rules are kept. This status is only set by
+       provisioning, never by management.";
   }
 
   identity status-candidate {
@@ -3038,14 +3059,16 @@ module ietf-schc {
       leaf rule-status {
         if-feature "management";
         type status-type;
-        default "status-valid";
+        default "status-origin";
         description
           "Status of the Rule. A Rule with the value
            'status-candidate' has been created by management and is
            not usable until the other end has validated it. A Rule
            with the value 'status-invalid' has been deleted and
            stays in this status during the guard period. A Rule
-           without this leaf is considered 'status-valid'.
+           without this leaf, such as a provisioned Rule, is
+           considered 'status-origin'; a Rule created by management
+           always carries its status.
            The value is a local view of the state of the management
            protocol machine of the node. It is managed locally by
            the node, and any value sent by the other end is
@@ -3393,6 +3416,10 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
   single revision, 2026-10-27, followed by the 2023-03-01 revision of
   RFC 9363. The module passes `pyang --ietf` (canonical order of the
   statements, description of `guard-period`).
+* Rule status: new `status-origin`, derived from `status-valid`, for the Rules
+  of the initial Set of Rules, which cannot be modified or deleted and are the
+  only ones kept by a reset of the context. It is the default value of
+  `rule-status`, and the status of the management Rules.
 * YANG Data Model: the `duplicate-rule` RPC is removed; it is defined in
   draft-toutain-schc-coreconf-management.
 * Example: the compression Rule uses the `entry-universal` list, with an

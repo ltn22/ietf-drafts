@@ -1740,8 +1740,8 @@ module ietf-schc {
     description
       "Identify a management Rule. Management Rules use the
        compression Rule structure to operate on the SCHC Context.
-       Management Rules are always valid: their status is always
-       'status-valid'.";
+       Management Rules are origin Rules: their status is always
+       'status-origin'.";
   /* Reference to be added when the Rule Management specification
      is available. */
   }
@@ -1755,8 +1755,20 @@ module ietf-schc {
     base status-base-type;
     description
       "The Rule belongs to the Set of Rules and can be used. Only
-       the Rules with this status can be used for compression,
-       decompression, fragmentation, and reassembly.";
+       the Rules with this status, or with a status derived from
+       it, can be used for compression, decompression,
+       fragmentation, and reassembly.";
+  }
+
+  identity status-origin {
+    base status-valid;
+    description
+      "The Rule belongs to the initial Set of Rules, provisioned
+       before the start of the SCHC instance. It is valid, and it
+       cannot be modified or deleted by management. The management
+       Rules are origin Rules. When the context is reset, only the
+       origin Rules are kept. This status is only set by
+       provisioning, never by management.";
   }
 
   identity status-candidate {
@@ -2192,14 +2204,16 @@ module ietf-schc {
       leaf rule-status {
         if-feature "management";
         type status-type;
-        default "status-valid";
+        default "status-origin";
         description
           "Status of the Rule. A Rule with the value
            'status-candidate' has been created by management and is
            not usable until the other end has validated it. A Rule
            with the value 'status-invalid' has been deleted and
            stays in this status during the guard period. A Rule
-           without this leaf is considered 'status-valid'.
+           without this leaf, such as a provisioned Rule, is
+           considered 'status-origin'; a Rule created by management
+           always carries its status.
            The value is a local view of the state of the management
            protocol machine of the node. It is managed locally by
            the node, and any value sent by the other end is
