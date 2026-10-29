@@ -1,7 +1,7 @@
-module ietf-schc-rpc-duplicate {
+module ietf-schc-basic-mgmt {
   yang-version 1.1;
-  namespace "urn:ietf:params:xml:ns:yang:ietf-schc-rpc-duplicate";
-  prefix schc-dup;
+  namespace "urn:ietf:params:xml:ns:yang:ietf-schc-basic-mgmt";
+  prefix schc-bmgmt;
 
   import ietf-schc {
     prefix schc;
@@ -38,13 +38,14 @@ module ietf-schc-rpc-duplicate {
      described in BCP 14 (RFC 2119) (RFC 8174) when, and only when,
      they appear in all capitals, as shown here.
 
-     This module defines the 'duplicate-rule' RPC, used to manage
-     the SCHC Rules with CORECONF.";
+     This module defines the basic management operations of the
+     SCHC Rules with CORECONF: the 'duplicate-rule' and
+     'reset-context' RPCs.";
 
   revision 2026-10-29 {
     description
       "Initial version, with the 'duplicate-rule' RPC moved from the
-       'ietf-schc' module.";
+       'ietf-schc' module, and the 'reset-context' RPC.";
     reference
       "draft-toutain-schc-coreconf-management CORECONF Rule
        management for SCHC";
@@ -56,7 +57,10 @@ module ietf-schc-rpc-duplicate {
       "Duplicate an existing Rule, given by 'from', into a new Rule,
        given by 'to', which does not exist yet. The new Rule may be
        updated with the CORECONF iPATCH payload carried in
-       'ipatch-sequence' before it is added to the Set of Rules.";
+       'ipatch-sequence' before it is added to the Set of Rules.
+       The 'from' Rule can be an origin Rule, except a management
+       Rule. The new Rule is created as any Rule created by
+       management, and is never an origin Rule.";
     input {
       container from {
         description
@@ -110,6 +114,31 @@ module ietf-schc-rpc-duplicate {
         description
           "Result of the duplication. A negative value indicates that
            the duplication did not take place.";
+      }
+    }
+  }
+
+  rpc reset-context {
+    if-feature "schc:management";
+    description
+      "Reset the Set of Rules to its initial content: only the
+       origin Rules are kept. Every other Rule, whatever its status,
+       becomes invalid, and its RuleID becomes free when the guard
+       period is over. The node that invokes the RPC applies the
+       reset when it sends the request, the node that receives it
+       applies the reset when it receives the request.";
+    output {
+      leaf status {
+        type enumeration {
+          enum success {
+            value 0;
+            description
+              "The reset has been applied.";
+          }
+        }
+        description
+          "Result of the reset. A reset that cannot be applied is
+           refused with a CoAP error code.";
       }
     }
   }

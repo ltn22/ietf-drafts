@@ -53,6 +53,11 @@ author:
 
 
 normative:
+  RFC2119:
+  RFC8174:
+  RFC3688:
+  RFC6020:
+  RFC7950:
   RFC8724:
   RFC9363:
   I-D.toutain-schc-rfc9363bis:
@@ -65,7 +70,7 @@ normative:
   I-D.ietf-lpwan-architecture:
   I-D.toutain-schc-sid-allocation:
 informative:
-  RFC9175:
+  RFC8340:
 
 entity:
   SELF: "[RFC-XXXX]"
@@ -73,7 +78,9 @@ entity:
 --- abstract
 
 This document describes how CORECONF can be applied to SCHC for context and rule
-set management between endpoints.
+set management between endpoints. It also defines a YANG module with an RPC to
+duplicate an existing Rule and apply some modifications, and an RPC to reset the
+Set of Rules to its initial content.
 
 
 --- middle
@@ -96,7 +103,9 @@ defines how data modeled in YANG are serialized in CBOR, and on
 {{I-D.ietf-core-comi}}, which defines the CoAP interface. The document also
 specifies the compression Rules dedicated to the management traffic itself. They
 make control and configuration exchanges more efficient and are distinct from
-the compression applied to regular application data.
+the compression applied to regular application data. Finally, it defines the
+"ietf-schc-basic-mgmt" YANG module ({{sec-yang-module}}), which provides an RPC
+to create a Rule from an existing one and an RPC to reset the Set of Rules.
 
 # Applicability statement
 
@@ -110,8 +119,9 @@ SCHC instance management allows the two endpoints to modify the common SoR, by:
 
 Because of propagation delays and of the possible loss of management messages,
 both endpoints could temporarily hold different versions of a rule with the same
-RuleID. Therefore, an existing rule MUST NOT be modified. To change a rule, it
-MUST be deleted and a new rule MUST be created.
+RuleID. Therefore, an existing rule MUST NOT be modified. To change a rule, a
+new rule, with another RuleID, MUST be created, and the old one MAY then be
+deleted, unless it is an `origin` rule (see {{sec-rule-status}}).
 
 A new type of traffic is defined called management traffic, which deals
 exclusively with message exchanges concerning context and rule management.
@@ -161,19 +171,31 @@ Management rules and other rules.
 
 In {{RFC8724}} and its associated Data Model in {{RFC9363}}, rules are
 established when the SCHC instance is configured and are not modified
-afterwards. With management, rules can be created and deleted while the instance
-is running. A new state is therefore introduced for the rules, the
-"rule-status". It is used for the creation and the deletion of rules, to
-preserve the atomicity of the SoR: both ends move together from one version of
-the SoR to the next, and a rule is never used by one end while the other end
-does not have it. The status is local to each node: each node sets the status of
-its rules according to its own protocol state, so that both nodes can have
-different statuses for the same rule during a creation or a deletion.
+afterwards. These rules form the initial SoR. With management, rules can be
+created and deleted while the instance is running. A new state is therefore
+introduced for the rules, the "rule-status". It is used for the creation and the
+deletion of rules, to preserve the atomicity of the SoR: both ends move together
+from one version of the SoR to the next, and a rule is never used by one end
+while the other end does not have it. The status is local to each node: each
+node sets the status of its rules according to its own protocol state, so that
+both nodes can have different statuses for the same rule during a creation or a
+deletion.
 
 A rule can have several statuses (the state machine is summarized in
 {{sec-fsm}}):
 
-* `valid`: the rule belongs to the SoR and can be used for C/D and F/R.
+* `origin`: the rule belongs to the initial SoR, provisioned before the start of
+  the SCHC instance, as the management rules. It is used for C/D and F/R as a
+  `valid` rule, and behaves as a `valid` rule in the procedures below, except
+  that it cannot be modified or deleted: a deletion whose target is an `origin`
+  rule is refused with 4.03 Forbidden. It can be duplicated (see
+  {{sec-duplicate-rule-rpc}}), except the management rules. The `origin` status
+  is only set by provisioning, never by management, and the `origin` rules are
+  the only ones kept when the SoR is reset (see {{sec-reset-rpc}}). Since they
+  never change, they are always identical on both ends.
+* `valid`: the rule belongs to the SoR and can be used for C/D and F/R: it can
+  be selected for compression or fragmentation, and the SCHC PDUs carrying its
+  rule ID are decompressed or reassembled with it.
 * `candidate`: the rule has been created, but the other end has not validated it
   yet. A SCHC PDU MUST NOT be generated with a `candidate` rule, neither for C/D
   nor for F/R. A `candidate` rule becomes `valid` either if the management
@@ -190,9 +212,9 @@ A rule can have several statuses (the state machine is summarized in
 * `free`: the rule ID can be used to create a new rule. When the Guard period of
   a deleted rule is over, the rule is either marked `free` in the SoR, or
   removed from the SoR. A rule ID absent from the SoR is also `free`. A new rule
-  ID MUST NOT be equal to, a prefix of, or prefixed by the rule ID of a `valid`,
-  `candidate` or `invalid` rule, since the SCHC packets could not be parsed
-  without ambiguity.
+  ID MUST NOT be equal to, a prefix of, or prefixed by the rule ID of an
+  `origin`, `valid`, `candidate` or `invalid` rule, since the SCHC packets could
+  not be parsed without ambiguity.
 
 
 
@@ -261,7 +283,16 @@ PDU is accepted and decoded, and X becomes `valid` in A.
 The acknowledgement of a creation may be lost without a SCHC PDU using the new
 rule being sent, or the CoAP exchange may be abandoned by A. Then A cannot know
 if B has created the rule, and the rule stays `candidate` on A. To recover, A
-repeats the creation. A creation is idempotent:
+repeats the creation.
+
+SCHC rule IDs do not have a fixed length. Two different rule IDs overlap when
+one of them is a prefix of the other: for instance, the rule IDs 110 and 110001
+overlap, since a SCHC packet built with rule 110001 also starts with the bits of
+rule 110, and could not be parsed without ambiguity. The rule IDs 110 and 111 do
+not overlap. A rule ID that overlaps the rule ID of an existing rule cannot be
+used for a new rule (see `free`).
+
+A creation is idempotent:
 
 * if the rule does not exist on B (`free`), B creates it as `valid` and
   acknowledges it;
@@ -270,22 +301,22 @@ repeats the creation. A creation is idempotent:
   acknowledgement as for the first request;
 * if a `valid` rule with the same rule ID but a different content exists on B,
   or a rule whose rule ID overlaps (see `free`), B refuses the request with 4.09
-  Conflict. A discards its `candidate` rule (the rule becomes `free`), and may
-  retry later with another rule ID or content;
+  Conflict;
 * if the rule is `candidate` on B, the creations of both ends cross (see
   {{sec-simultaneous-creation}});
 * if the rule ID is `invalid` on B, or overlaps an `invalid` rule ID (the Guard
-  period is running), B answers 5.03 Service Unavailable. A keeps the rule
-  `candidate` and repeats the creation later, with an increasing delay. The
-  response does not carry a Max-Age option, so that it can be compressed by the
-  management rules (see {{sec-mgmt-rules-tables}}).
+  period is running), B also refuses the request with 4.09 Conflict.
 
-A 4.09 Conflict must not be used during the Guard period: a copy of the creation
+When the creation is refused with 4.09 Conflict, A gives up its `candidate`
+rule, as described below, and may retry with another rule ID. Discarding the
+`candidate` rule without deleting it would not be safe: a copy of the creation
 sent in a previous CoAP exchange may still be in flight, and be accepted by B
-when its Guard period is over, while A would already have discarded the rule. An
-answer is taken into account only if the rule is still the `candidate` rule
-created by the request. Otherwise (the rule has been validated by a SCHC PDU,
-replaced or deleted in the meantime), it is ignored.
+when its Guard period is over, while A would no longer have the rule. The
+deletion makes the rule `invalid` on both ends: a late copy of the creation is
+either refused during the Guard period of B, or accepted before the deletion,
+which then removes it. An answer is taken into account only if the rule is
+still the `candidate` rule created by the request. Otherwise (the rule has been
+validated by a SCHC PDU, replaced or deleted in the meantime), it is ignored.
 
 The initiator keeps the rule `candidate` and repeats the creation, with an
 increasing delay, until it receives an answer. The creation stops as soon as the
@@ -303,23 +334,29 @@ is lost and the rule is not used by B before A repeats the request:
 A -> B  REQ: iPATCH /c
         (Content-Format: application/yang-instances+cbor-seq)
         ["rule", 9, 4]: { "rule-nature": "nature-compression", ... }
-        A: rule 9/4 candidate
-        B: rule 9/4 free -> valid
+
+A: rule 9/4 candidate.                    B: rule 9/4 free -> valid
+
 B -> A  RES: 2.04 Changed                                   (lost)
-        A: CoAP exchange abandoned, rule 9/4 stays candidate
+
+A: CoAP exchange abandoned, rule 9/4 stays candidate
 
 A -> B  REQ: iPATCH /c   (same content, new CoAP exchange)
         ["rule", 9, 4]: { "rule-nature": "nature-compression", ... }
+
         B: rule 9/4 already valid with the same content, no change
+
+      
 B -> A  RES: 2.04 Changed
-        A: rule 9/4 candidate -> valid
+
+A: rule 9/4 candidate -> valid
 ~~~
 {: #Fig-idempotent title='Idempotent creation after a lost acknowledgement'}
 
 If the second request had a different content, B would answer 4.09 Conflict and
-rule 9/4 would stay `valid` on B with its original content. A would discard its
-`candidate` rule (it becomes `free`), and would have to delete rule 9/4 before
-creating it with the new content.
+rule 9/4 would stay `valid` on B with its original content. A would give up its
+`candidate` rule by deleting it, which also deletes rule 9/4 on B, and would
+create the rule with the new content with another rule ID.
 
 ### Simultaneous creation {#sec-simultaneous-creation}
 
@@ -332,8 +369,9 @@ space SHOULD be shared between both ends:
 
 With this convention, two rule IDs created by different ends are never equal,
 nor the prefix of each other. It applies to the rules created with an iPATCH and
-with the "duplicate-rule" RPC. The rules provisioned before the start of the
-SCHC instance, such as the management rules, are not concerned.
+with the "duplicate-rule" RPC. The `origin` rules, provisioned before the start
+of the SCHC instance, are not concerned: their rule IDs can be in both parts,
+and are never `free`.
 
 If both creations still cross, for instance when this convention is not used,
 the Device has priority:
@@ -373,15 +411,19 @@ Device refuses the creation of the Core with 4.09 Conflict. The Core accepts the
 creation of the Device: X becomes `valid` with the content v2 on the Core, which
 acknowledges it. The Device validates X when it receives the acknowledgement,
 and the 4.09 Conflict received by the Core is ignored. If the 4.09 Conflict
-reaches the Core before the creation of the Device, the `candidate` rule of the
-Core becomes `free` first, and the creation of the Device is then accepted as
-any creation.
+reaches the Core before the creation of the Device, the Core gives up its
+`candidate` rule and deletes it (see {{sec-idempotent-creation}}). The creation
+of the Device is then refused by the Core, or stopped by the deletion when it
+reaches the Device: rule X is deleted on both ends, and each end may retry with
+another rule ID.
 
 ## Rule deletion {#sec-rule-deletion}
 
 When a rule is deleted, it becomes `invalid` on both ends for a Guard period
 (see {{Fig-Rule-del}}). During that period, a rule with the same ID cannot be
-created, and the SCHC PDUs carrying the Rule ID are dropped.
+created, and the SCHC PDUs carrying the Rule ID are dropped. An `origin` rule
+cannot be deleted: the deletion is refused with 4.03 Forbidden, and the rule
+stays `origin` on both ends.
 
 The initiator marks the rule `invalid` when it sends the deletion, so that it
 does not generate any more PDU with this rule. Its Guard period starts when it
@@ -430,18 +472,24 @@ Both ends then use the same Guard period
 
     G >= L
 
-plus a margin for the clock drift. For example, in a network where a SCHC PDU is
-delivered in less than 30 s, G = 30 s is enough, whatever the number of
+plus a margin for the clock drift. G does not depend on the number of
 retransmissions of the CoAP deletion, since they happen before the Guard period
 of A starts.
 
+This document gives no value for L, G and the CoAP transmission parameters: they
+depend on the network, which can be a terrestrial LPWAN as well as an
+interplanetary link. The CoAP transmission parameters are configured accordingly
+({{RFC7252}}, Section 4.8.1), with a MAX_LATENCY of at least L, and the values
+derived from them, such as MAX_TRANSMIT_SPAN and EXCHANGE_LIFETIME, are the ones
+used in this document.
+
 Starting the Guard period of A when it sends the request would not be
-sufficient: the request may be retransmitted for the CoAP transmission span (45
-seconds with the default parameters of {{RFC7252}}) before B receives it, and B
-keeps generating PDUs with X during all that time. A stale PDU would then arrive
-after the Guard period of A, possibly when X has been created again with another
-content: A in the `candidate` state would validate the new rule on this stale
-PDU, and would decode the following PDUs with the wrong rule.
+sufficient: the request may be retransmitted during MAX_TRANSMIT_SPAN
+({{RFC7252}}) before B receives it, and B keeps generating PDUs with X during
+all that time. A stale PDU would then arrive after the Guard period of A,
+possibly when X has been created again with another content: A in the
+`candidate` state would validate the new rule on this stale PDU, and would
+decode the following PDUs with the wrong rule.
 
 When both ends delete the same rule at the same time, each end keeps sending its
 deletion request until it is acknowledged, possibly after the Guard period of
@@ -456,8 +504,13 @@ deduplication.
 Without crossing deletions, the Guard period of A ends at least as late as the
 one of B. A creation initiated by A therefore reaches a B whose Guard period is
 over. A creation initiated by B may arrive when the Guard period of A is still
-running: A answers 5.03 Service Unavailable, and B retries when the Guard period
-of A is over (see {{sec-idempotent-creation}}).
+running, and be refused with 4.09 Conflict (see {{sec-idempotent-creation}}).
+The Guard period of A ends at most MAX_TRANSMIT_SPAN + 2L after the one of B:
+the acknowledgement of the deletion may be lost, and the deletion repeated
+during MAX_TRANSMIT_SPAN ({{RFC7252}}), while the deduplication prevents these
+copies from restarting the Guard period of B. To avoid such a refusal, a rule ID
+SHOULD NOT be used for a new rule before MAX_TRANSMIT_SPAN + 2L after the end of
+its Guard period: the Guard period of the other end is then over too.
 
 ## Restart of a node {#sec-restart}
 
@@ -465,26 +518,33 @@ Since management changes the SoR while the SCHC instance is running, the rules
 and their status SHOULD be stored in a stable memory, which survives a restart.
 Otherwise, an end that restarts loses the rules created or deleted by
 management, while the other end still uses them, and an `invalid` rule would be
-considered as `free` before the end of its Guard period. When the rules are
-kept, after a restart:
+considered as `free` before the end of its Guard period. The `origin` rules are
+not concerned, since they are part of the initial SoR. An end that restarts
+without its rules has only its `origin` rules: it SHOULD then reset the SoR with
+the "reset-context" RPC (see {{sec-reset-rpc}}), before any other management
+request, so that both ends come back to the same SoR. When the rules are kept,
+after a restart:
 
 * a `candidate` rule stays `candidate`, and the creation is repeated;
 * an `invalid` rule whose deletion has not been acknowledged stays `invalid`,
   and the deletion is repeated;
 * an `invalid` rule whose Guard period had started begins a new, complete Guard
   period, since the time spent during the restart is unknown. A longer Guard
-  period is always safe: a creation received during this period is answered with
-  5.03 Service Unavailable (see {{sec-idempotent-creation}}).
+  period is always safe: a creation received during this period is refused with
+  4.09 Conflict, and the other end deletes its `candidate` rule (see
+  {{sec-idempotent-creation}}).
 
 The deduplication state of CoAP (see {{sec-rule-deletion}}) is usually lost
 during a restart, so that a copy of a management request sent before the restart
 could be processed again. If this state is not kept in a stable memory, the end
-MUST either check the freshness of the management requests with the Echo option
-{{RFC9175}}, or answer them with 5.03 Service Unavailable during
-EXCHANGE_LIFETIME ({{RFC7252}}) after the restart, so that the copies sent
-before the restart are no longer in flight. When OSCORE is used, the recovery of
-its replay window after a restart (Appendix B.1.2 of {{RFC8613}}) relies on the
-same Echo mechanism.
+MUST silently discard the management requests during EXCHANGE_LIFETIME
+({{RFC7252}}) after the restart, as if it had not restarted yet, so that the
+copies sent before the restart are no longer in flight when it processes
+requests again. For the other end, this cannot be distinguished from a loss:
+the CoAP exchange is abandoned and the request is repeated later, a rule being
+created stays `candidate`, and a rule being deleted stays `invalid`. When OSCORE
+is used, its replay window is recovered after a restart as described in
+Appendix B.1.2 of {{RFC8613}}.
 
 # Management messages
 
@@ -558,7 +618,8 @@ CORECONF proposes an interface to manage data structured with a YANG Data Model.
 {{I-D.toutain-schc-rfc9363bis}} (module revision 2026-10-27). This document uses
 the updated model. SCHC Instance Management MUST use FETCH to read a rule and
 iPATCH to create or delete a rule, and RPCs to generate specific rules depending
-on RPC parameters.
+on RPC parameters, such as the RPCs of the "ietf-schc-basic-mgmt" module
+({{sec-yang-module}}).
 
 Management rules have to be marked in a way that allows quickly identifying
 which rules in a SoR are responsible for management. Therefore, a
@@ -591,17 +652,22 @@ header and the CORECONF payload.
 ### Rule Status and Guard Period
 The status of a rule determines if it can be used (see "Rule status"). The
 "rule-status" leaf is defined only when the "management" feature is supported.
-Its type is an identityref based on "status-base-type", with four identities
-corresponding to the statuses `valid`, `candidate`, `invalid` and `free`:
-"status-valid" (the default), "status-candidate", "status-invalid" and
-"status-free". A rule without "rule-status" is considered as "status-valid".
+Its type is an identityref based on "status-base-type", with five identities
+corresponding to the statuses `origin`, `valid`, `candidate`, `invalid` and
+`free`: "status-origin" (the default), "status-valid", "status-candidate",
+"status-invalid" and "status-free". "status-origin" is derived from
+"status-valid", so that a rule can be used for C/D and F/R when its status is
+"status-valid" or derived from it. A rule without "rule-status", such as a
+provisioned rule, is considered as "status-origin"; a rule created by management
+always carries its status.
 
 The "rule-status" leaf is managed locally by each node, which rewrites it
 according to the protocol state of the rule (see {{sec-rule-status}} and
 {{sec-fsm}}). It is never set by the other node: a value received in the
 creation of a rule is ignored, and a request whose target is "rule-status" is
-refused as any modification of a rule (see {{sec-ipatch}}). It can be read with
-FETCH, for instance to check the state of the rules after a restart.
+refused as any modification of a rule (see {{sec-ipatch}}). In particular, a
+node never gets an `origin` rule from the other node. It can be read with FETCH,
+for instance to check the state of the rules after a restart.
 
 The duration of the Guard period is not a property of a single rule. It is
 carried by the "guard-period" container of the top-level "context" container, a
@@ -732,24 +798,13 @@ Example: deletion of Rule 7/8.
   RES: 2.04 Changed
 ~~~
 
-The management rules cannot be deleted (see {{sec-mgmt-rules}}): a deletion
-whose target is a management rule is refused.
+An `origin` rule, such as a management rule, cannot be deleted: a deletion whose
+target is an `origin` rule is refused with 4.03 Forbidden.
 
-Deleting the top-level object (`ietf-schc:schc`) is a factory reset: the SoR
-returns to the set of rules present at the start of the SCHC instance, including
-the management rules. Both nodes apply it, the node that sends the request and
-the node that receives it:
-
-* the rules that are not in the initial set, or whose content differs from the
-  initial one, are deleted as single rules (see {{sec-rule-deletion}}): they
-  become `invalid` for a Guard period;
-* the rules of the initial set that are missing are created again as soon as
-  their rule ID is `free`. On the node that sent the request, they are
-  `candidate` until it receives the acknowledgement of the request;
-* the rules of the initial set that have not been changed remain `valid`.
-
-This ensures the SCHC context remains structurally valid, and that the
-management of the SCHC instance remains possible.
+Deleting the top-level object (`ietf-schc:schc`) is refused with 4.03 Forbidden.
+To return to the initial SoR, a node uses the "reset-context" RPC (see
+{{sec-reset-rpc}}), which keeps the `origin` rules, so that the management of
+the SCHC instance remains possible.
 
 #### Forbidden requests
 
@@ -808,10 +863,12 @@ POST message can be sent to invoke a specific RPC on the remote endpoint.
 Details of the supported RPCs and their behavior are defined in Section
 {{sec-rpcs}}.
 
-The input parameters of an RPC acting on rules MUST provide the rule IDs of the
-rules on which the RPC is applied, so that both nodes know the rules concerned
-by the rule status procedures ({{sec-rule-status}}). The output of the RPC MUST
-provide a status summarizing the execution of the RPC.
+The input parameters of an RPC acting on some rules MUST provide the rule IDs of
+the rules on which the RPC is applied, so that both nodes know the rules
+concerned by the rule status procedures ({{sec-rule-status}}). An RPC acting on
+all the rules that are not `origin`, such as "reset-context", has no rule ID in
+its input. The output of the RPC MUST provide a status summarizing the execution
+of the RPC.
 
 RPCs and actions are defined in a YANG Data Model with optional associated
 inputs and outputs. The request payload contains the RPC input map, if any. The
@@ -839,15 +896,10 @@ operations, such as rebooting the remote device endpoint.
 Each RPC resource has specific inputs and outputs, and may be invoked remotely
 via a POST CoAP message, as described in Section {{sec-post-method}}.
 
-The definition of the RPCs is out of the scope of this document: the RPCs have
-to be adapted to the traffic, in order to optimize the rule management for its
-patterns. Other documents may define RPCs, possibly in other YANG Data Models
-than the SCHC one.
-
-
-
-This section illustrates the use of RPCs with the "duplicate-rule" RPC, defined
-in the "ietf-schc-rpc-duplicate" YANG module ({{sec-yang-module}}).
+This document defines the "duplicate-rule" and "reset-context" RPCs, in the
+"ietf-schc-basic-mgmt" YANG module ({{sec-yang-module}}). Other RPCs, adapted to
+the traffic in order to optimize the rule management for its patterns, may be
+defined by other documents, in other YANG modules.
 
 ## Duplicate Rule {#sec-duplicate-rule-rpc}
 
@@ -865,10 +917,15 @@ output returns a status, an enumeration conveying the result of the operation:
 "to-rule-already-exists" (-1), "from-rule-not-found" (-2) or "invalid-ipatch"
 (-3).
 
+The "from" rule can be an `origin` rule, except a management rule: this is the
+usual way to specialize a generic rule of the initial SoR. The new rule is
+created as any rule created by management (see {{sec-rule-status}}), and is
+never an `origin` rule.
+
 Represented as a tree:
 
 ~~~
-module: ietf-schc-rpc-duplicate
+module: ietf-schc-basic-mgmt
 
   rpcs:
     +---x duplicate-rule {schc:management}?
@@ -901,7 +958,7 @@ REQ:  POST </c>
       (Content-Format: application/yang-instances+cbor-seq)
 
 {
-  "/ietf-schc-rpc-duplicate:duplicate-rule":
+  "/ietf-schc-basic-mgmt:duplicate-rule":
   {
     "input/from/rule-id-value": 8,
     "input/from/rule-id-length": 4,
@@ -919,7 +976,7 @@ RES:  2.04 Changed
       (Content-Format: application/yang-instances+cbor-seq)
 
 {
-  "/ietf-schc-rpc-duplicate:duplicate-rule":
+  "/ietf-schc-basic-mgmt:duplicate-rule":
   {
     "output/status": "success-with-validation",
   }
@@ -937,6 +994,270 @@ negative status values ("to-rule-already-exists", "from-rule-not-found" or
 requested. The precise error code and diagnostic message are
 implementation-dependent but SHOULD provide enough context for the management
 entity to identify the cause of failure.
+
+## Reset Context {#sec-reset-rpc}
+
+The "reset-context" RPC brings the SoR of both nodes back to its initial
+content: only the `origin` rules are kept, and all the rules created by
+management are removed. It has no input, and its output is a status.
+
+Represented as a tree:
+
+~~~
+module: ietf-schc-basic-mgmt
+
+  rpcs:
+    +---x reset-context {schc:management}?
+       +--ro output
+          +--ro status?   enumeration
+~~~
+
+The reset applies to every rule that is not `origin`, whatever its status, and
+to every rule ID that is not the rule ID of an `origin` rule, even if it is
+absent from the SoR. It follows the deletion procedure ({{sec-rule-deletion}}):
+
+* the node that invokes the RPC applies the reset when it sends the request:
+  these rules and rule IDs become `invalid`, its creations and deletions in
+  progress are stopped, and its Guard period starts when it receives the
+  response;
+* the node that receives the request applies the reset at the reception: these
+  rules and rule IDs become `invalid`, its creations in progress are stopped,
+  its Guard period starts, and it answers 2.04 Changed with the "success"
+  status. If it is itself waiting for the acknowledgement of its own deletion or
+  reset, its Guard period starts when it receives this acknowledgement;
+* during the Guard period, a creation is refused with 4.09 Conflict (see
+  {{sec-idempotent-creation}}), and the SCHC PDUs carrying a rule ID that is not
+  the rule ID of an `origin` rule are dropped. When the Guard period is over,
+  these rule IDs become `free`: the SoR only contains the `origin` rules;
+* the `origin` rules are not affected and remain usable during the whole
+  procedure, since they are identical on both nodes. In particular, the
+  management traffic, compressed with the management rules, is not
+  interrupted.
+
+A reset concerns all the rule IDs: a node does not send it while another
+management request of this node is in progress, and does not send another
+management request before the reset is acknowledged. As a deletion, the reset is
+idempotent: the node repeats the request until it receives the response, a copy
+of the request is removed by the deduplication ({{sec-rule-deletion}}), and two
+crossing resets lead to the same SoR.
+
+Applying the reset on the invoking node only when it receives the response would
+not be safe. The other node, which has already applied the reset, could create a
+rule whose creation reaches the invoking node before the response: the invoking
+node would accept it, then remove it when the response arrives, while the rule
+stays `valid` on the other node. Applying the reset when the request is sent
+makes the invoking node refuse such a creation with 4.09 Conflict, and the other
+node then deletes its `candidate` rule (see {{sec-idempotent-creation}}).
+
+Example:
+
+~~~
+REQ:  POST </c>
+      (Content-Format: application/yang-instances+cbor-seq)
+
+{
+  "/ietf-schc-basic-mgmt:reset-context": null
+}
+
+RES:  2.04 Changed
+      (Content-Format: application/yang-instances+cbor-seq)
+
+{
+  "/ietf-schc-basic-mgmt:reset-context":
+  {
+    "output/status": "success"
+  }
+}
+~~~
+
+A node that is not allowed to reset the SoR of the other node refuses the
+request with 4.03 Forbidden.
+
+# YANG Module {#sec-yang-module}
+
+The "ietf-schc" module, including the "management" feature, the "rule-status"
+leaf and the "context" container, is defined in {{I-D.toutain-schc-rfc9363bis}}
+(revision 2026-10-27). This document defines the "ietf-schc-basic-mgmt" module,
+which imports it and defines the "duplicate-rule" RPC
+({{sec-duplicate-rule-rpc}}) and the "reset-context" RPC ({{sec-reset-rpc}}).
+The RPCs are only available when the "management" feature of "ietf-schc" is
+supported.
+
+The tree of the module, following the notation of {{RFC8340}}, is:
+
+~~~
+module: ietf-schc-basic-mgmt
+
+  rpcs:
+    +---x duplicate-rule {schc:management}?
+    |  +---w input
+    |  |  +---w from
+    |  |  |  +---w rule-id-value?    uint32
+    |  |  |  +---w rule-id-length?   uint8
+    |  |  +---w to
+    |  |  |  +---w rule-id-value?    uint32
+    |  |  |  +---w rule-id-length?   uint8
+    |  |  +---w ipatch-sequence?   binary
+    |  +--ro output
+    |     +--ro status?   enumeration
+    +---x reset-context {schc:management}?
+       +--ro output
+          +--ro status?   enumeration
+~~~
+{: #Fig-tree-rpc title='Tree of the ietf-schc-basic-mgmt YANG module'}
+
+{::comment}
+TODO: allocate a SID range and a SID file for this module, needed by CORECONF.
+{:/comment}
+
+~~~ yang
+module ietf-schc-basic-mgmt {
+  yang-version 1.1;
+  namespace "urn:ietf:params:xml:ns:yang:ietf-schc-basic-mgmt";
+  prefix schc-bmgmt;
+
+  import ietf-schc {
+    prefix schc;
+    reference
+      "draft-toutain-schc-rfc9363bis A YANG Data Model for Static
+       Context Header Compression (SCHC)";
+  }
+
+  organization
+    "IETF Static Context Header Compression (schc) Working Group";
+  contact
+    "WG Web:   <https://datatracker.ietf.org/wg/schc/about/>
+     WG List:  <mailto:schc@ietf.org>
+     Editor:   Laurent Toutain
+       <mailto:laurent.toutain@imt-atlantique.fr>";
+  description
+    "Copyright (c) 2026 IETF Trust and the persons identified as
+     authors of the code.  All rights reserved.
+
+     Redistribution and use in source and binary forms, with or
+     without modification, is permitted pursuant to, and subject to
+     the license terms contained in, the Revised BSD License set
+     forth in Section 4.c of the IETF Trust's Legal Provisions
+     Relating to IETF Documents
+     (https://trustee.ietf.org/license-info).
+
+     This version of this YANG module is part of RFC XXXX
+     (https://www.rfc-editor.org/info/rfcXXXX); see the RFC itself
+     for full legal notices.
+
+     The key words 'MUST', 'MUST NOT', 'REQUIRED', 'SHALL', 'SHALL
+     NOT', 'SHOULD', 'SHOULD NOT', 'RECOMMENDED', 'NOT RECOMMENDED',
+     'MAY', and 'OPTIONAL' in this document are to be interpreted as
+     described in BCP 14 (RFC 2119) (RFC 8174) when, and only when,
+     they appear in all capitals, as shown here.
+
+     This module defines the basic management operations of the
+     SCHC Rules with CORECONF: the 'duplicate-rule' and
+     'reset-context' RPCs.";
+
+  revision 2026-10-29 {
+    description
+      "Initial version, with the 'duplicate-rule' RPC moved from the
+       'ietf-schc' module, and the 'reset-context' RPC.";
+    reference
+      "draft-toutain-schc-coreconf-management CORECONF Rule
+       management for SCHC";
+  }
+
+  rpc duplicate-rule {
+    if-feature "schc:management";
+    description
+      "Duplicate an existing Rule, given by 'from', into a new Rule,
+       given by 'to', which does not exist yet. The new Rule may be
+       updated with the CORECONF iPATCH payload carried in
+       'ipatch-sequence' before it is added to the Set of Rules.
+       The 'from' Rule can be an origin Rule, except a management
+       Rule. The new Rule is created as any Rule created by
+       management, and is never an origin Rule.";
+    input {
+      container from {
+        description
+          "Rule ID of the existing Rule to duplicate.";
+        uses schc:rule-id-type;
+      }
+      container to {
+        description
+          "Rule ID of the new Rule.";
+        uses schc:rule-id-type;
+      }
+      leaf ipatch-sequence {
+        type binary;
+        description
+          "CBOR sequence of a CORECONF iPATCH payload, applied to the
+           new Rule before it is added. This parameter is optional;
+           when it is absent, the new Rule is an exact copy.";
+      }
+    }
+    output {
+      leaf status {
+        type enumeration {
+          enum success-with-validation {
+            value 0;
+            description
+              "The new Rule has been created and validated.";
+          }
+          enum success-not-validated {
+            value 1;
+            description
+              "The new Rule has been created, but not validated
+               yet.";
+          }
+          enum to-rule-already-exists {
+            value -1;
+            description
+              "The Rule ID given by 'to' already exists.";
+          }
+          enum from-rule-not-found {
+            value -2;
+            description
+              "The Rule ID given by 'from' does not exist.";
+          }
+          enum invalid-ipatch {
+            value -3;
+            description
+              "The 'ipatch-sequence' cannot be applied to the new
+               Rule.";
+          }
+        }
+        description
+          "Result of the duplication. A negative value indicates that
+           the duplication did not take place.";
+      }
+    }
+  }
+
+  rpc reset-context {
+    if-feature "schc:management";
+    description
+      "Reset the Set of Rules to its initial content: only the
+       origin Rules are kept. Every other Rule, whatever its status,
+       becomes invalid, and its RuleID becomes free when the guard
+       period is over. The node that invokes the RPC applies the
+       reset when it sends the request, the node that receives it
+       applies the reset when it receives the request.";
+    output {
+      leaf status {
+        type enumeration {
+          enum success {
+            value 0;
+            description
+              "The reset has been applied.";
+          }
+        }
+        description
+          "Result of the reset. A reset that cannot be applied is
+           refused with a CoAP error code.";
+      }
+    }
+  }
+}
+~~~
+{: #Fig-yang-mgmt title="ietf-schc-basic-mgmt YANG Module" sourcecode-name="ietf-schc-basic-mgmt@2026-10-29.yang" sourcecode-markers="true"}
 
 # Protocol Stack {#sec-protocols}
 
@@ -981,11 +1302,13 @@ implicitly acts as a policy mechanism or safeguard for rule management
 operations.
 
 Management rules are protected elements within the SoR. They define the
-operation of the management channel itself and therefore MUST NOT be modified,
-duplicated, or deleted through CORECONF operations. Any attempt to apply a
-modification, duplication or deletion request to a management rule MUST result
-in an Unauthorized error response. This restriction ensures the integrity and
-stability of the SCHC management process.
+operation of the management channel itself: they are `origin` rules (see
+{{sec-rule-status}}), which cannot be modified or deleted, and in addition they
+MUST NOT be duplicated. Any attempt to apply a modification, duplication or
+deletion request to a management rule MUST result in a 4.03 Forbidden error
+response. This restriction ensures the integrity and stability of the SCHC
+management process, which is not interrupted by a reset of the SoR
+({{sec-reset-rpc}}).
 
 The four management rules are given in {{sec-mgmt-rules-tables}}.
 
@@ -1007,7 +1330,7 @@ file of the module revision 2026-10-27 and are not shown.
 
 ## Deletion cases
 
-* Delete root element:
+* Delete root element (refused, see {{sec-reset-rpc}}):
   
   ~~~
   YANG REQ: iPATCH /c
@@ -1015,7 +1338,7 @@ file of the module revision 2026-10-27 and are not shown.
     ('/ietf-schc:schc'): None
   } 
   
-  RES: 2.04 Changed
+  RES: 4.03 Forbidden
   ~~~
 
 * Delete a specific rule:
@@ -1219,137 +1542,63 @@ allowed (rule-id-value, rule-status updates).{:/comment}
   RES: 4.00 Bad Request
   ~~~
 
+# Security Considerations {#sec-security}
+
+The management of the SoR is restricted to the management rules, and the SCHC
+Packets using them MUST be protected by the underlying layer, OSCORE, or DTLS
+({{sec-mgmt-stack}}). The `origin` rules, including the management rules,
+cannot be modified or deleted, and the management rules cannot be duplicated
+({{sec-rule-status}}, {{sec-mgmt-rules}}). The `origin` status is only set by
+provisioning: a node cannot make a rule permanent on the other node.
+
+The "ietf-schc-basic-mgmt" YANG module defines two RPCs that change the SoR:
+
+* "duplicate-rule" creates a Rule. Creating a Rule changes the way the packets
+  are compressed, decompressed, fragmented, and reassembled, and an
+  unauthorized invocation could disturb or redirect the traffic of the Device;
+* "reset-context" removes all the Rules created by management. An unauthorized
+  or repeated invocation would prevent the use of these Rules, and degrade the
+  compression to the `origin` rules, but cannot remove the management rules.
+
+These RPCs are only invoked through the management rules, and their access
+SHOULD be restricted to the authorized management nodes, for instance using the
+NETCONF Access Control Model {{?RFC8341}} or an equivalent mechanism.
+
+# IANA Considerations {#sec-iana}
+
+## URI Registration
+
+IANA is requested to register the following URI in the "ns" subregistry of the
+"IETF XML Registry" {{RFC3688}}:
+
+URI:
+: urn:ietf:params:xml:ns:yang:ietf-schc-basic-mgmt
+
+Registrant Contact:
+: The IESG.
+
+XML:
+: N/A; the requested URI is an XML namespace.
+
+## YANG Module Name Registration
+
+IANA is requested to register the following YANG module in the "YANG Module
+Names" registry {{RFC6020}}:
+
+Name:
+: ietf-schc-basic-mgmt
+
+Namespace:
+: urn:ietf:params:xml:ns:yang:ietf-schc-basic-mgmt
+
+Prefix:
+: schc-bmgmt
+
+Reference:
+: RFC XXXX
+
 --- back
 
-
-# YANG Module {#sec-yang-module}
-
-The "ietf-schc" module, including the "management" feature, the "rule-status"
-leaf and the "context" container, is defined in {{I-D.toutain-schc-rfc9363bis}}
-(revision 2026-10-27). This document defines the "ietf-schc-rpc-duplicate"
-module, which imports it and defines the "duplicate-rule" RPC
-({{sec-duplicate-rule-rpc}}). The RPC is only available when the "management"
-feature of "ietf-schc" is supported.
-
-~~~ yang
-module ietf-schc-rpc-duplicate {
-  yang-version 1.1;
-  namespace "urn:ietf:params:xml:ns:yang:ietf-schc-rpc-duplicate";
-  prefix schc-dup;
-
-  import ietf-schc {
-    prefix schc;
-    reference
-      "draft-toutain-schc-rfc9363bis A YANG Data Model for Static
-       Context Header Compression (SCHC)";
-  }
-
-  organization
-    "IETF Static Context Header Compression (schc) Working Group";
-  contact
-    "WG Web:   <https://datatracker.ietf.org/wg/schc/about/>
-     WG List:  <mailto:schc@ietf.org>
-     Editor:   Laurent Toutain
-       <mailto:laurent.toutain@imt-atlantique.fr>";
-  description
-    "Copyright (c) 2026 IETF Trust and the persons identified as
-     authors of the code.  All rights reserved.
-
-     Redistribution and use in source and binary forms, with or
-     without modification, is permitted pursuant to, and subject to
-     the license terms contained in, the Revised BSD License set
-     forth in Section 4.c of the IETF Trust's Legal Provisions
-     Relating to IETF Documents
-     (https://trustee.ietf.org/license-info).
-
-     This version of this YANG module is part of RFC XXXX
-     (https://www.rfc-editor.org/info/rfcXXXX); see the RFC itself
-     for full legal notices.
-
-     The key words 'MUST', 'MUST NOT', 'REQUIRED', 'SHALL', 'SHALL
-     NOT', 'SHOULD', 'SHOULD NOT', 'RECOMMENDED', 'NOT RECOMMENDED',
-     'MAY', and 'OPTIONAL' in this document are to be interpreted as
-     described in BCP 14 (RFC 2119) (RFC 8174) when, and only when,
-     they appear in all capitals, as shown here.
-
-     This module defines the 'duplicate-rule' RPC, used to manage
-     the SCHC Rules with CORECONF.";
-
-  revision 2026-10-29 {
-    description
-      "Initial version, with the 'duplicate-rule' RPC moved from the
-       'ietf-schc' module.";
-    reference
-      "draft-toutain-schc-coreconf-management CORECONF Rule
-       management for SCHC";
-  }
-
-  rpc duplicate-rule {
-    if-feature "schc:management";
-    description
-      "Duplicate an existing Rule, given by 'from', into a new Rule,
-       given by 'to', which does not exist yet. The new Rule may be
-       updated with the CORECONF iPATCH payload carried in
-       'ipatch-sequence' before it is added to the Set of Rules.";
-    input {
-      container from {
-        description
-          "Rule ID of the existing Rule to duplicate.";
-        uses schc:rule-id-type;
-      }
-      container to {
-        description
-          "Rule ID of the new Rule.";
-        uses schc:rule-id-type;
-      }
-      leaf ipatch-sequence {
-        type binary;
-        description
-          "CBOR sequence of a CORECONF iPATCH payload, applied to the
-           new Rule before it is added. This parameter is optional;
-           when it is absent, the new Rule is an exact copy.";
-      }
-    }
-    output {
-      leaf status {
-        type enumeration {
-          enum success-with-validation {
-            value 0;
-            description
-              "The new Rule has been created and validated.";
-          }
-          enum success-not-validated {
-            value 1;
-            description
-              "The new Rule has been created, but not validated
-               yet.";
-          }
-          enum to-rule-already-exists {
-            value -1;
-            description
-              "The Rule ID given by 'to' already exists.";
-          }
-          enum from-rule-not-found {
-            value -2;
-            description
-              "The Rule ID given by 'from' does not exist.";
-          }
-          enum invalid-ipatch {
-            value -3;
-            description
-              "The 'ipatch-sequence' cannot be applied to the new
-               Rule.";
-          }
-        }
-        description
-          "Result of the duplication. A negative value indicates that
-           the duplication did not take place.";
-      }
-    }
-  }
-}
-~~~
-{: #Fig-yang-mgmt title="ietf-schc-rpc-duplicate YANG Module" sourcecode-name="ietf-schc-rpc-duplicate@2026-10-29.yang" sourcecode-markers="true"}
 
 # Management Rules {#sec-mgmt-rules-tables}
 
@@ -1371,7 +1620,7 @@ application/yang-instances+cbor-seq (iPATCH and POST requests, and responses
 carrying a payload). The CoAP codes are given as numbers: 2 (POST), 5 (FETCH), 7
 (iPATCH), 68 (2.04 Changed), 69 (2.05 Content), 128 (4.00 Bad Request), 129
 (4.01 Unauthorized), 131 (4.03 Forbidden), 132 (4.04 Not Found), 137 (4.09
-Conflict), 160 (5.00 Internal Server Error) and 163 (5.03 Service Unavailable).
+Conflict) and 160 (5.00 Internal Server Error).
 
 ~~~
  +---------------------------------------------------------------------+
@@ -1437,7 +1686,7 @@ Conflict), 160 (5.00 Internal Server Error) and 163 (5.03 Service Unavailable).
  |CoAP Code          |8 |1 |Dw|[68, 128,    |match-mapping|mapping-sent|
  |                   |  |  |  | 129, 131,   |             |            |
  |                   |  |  |  | 132, 137,   |             |            |
- |                   |  |  |  | 160, 163]   |             |            |
+ |                   |  |  |  | 160]        |             |            |
  |CoAP MID           |16|1 |Bi|0            |MSB(9)       |LSB         |
  +===================+==+==+==+=============+=============+============+
 ~~~
@@ -1507,7 +1756,7 @@ Conflict), 160 (5.00 Internal Server Error) and 163 (5.03 Service Unavailable).
  |CoAP Code          |8 |1 |Up|[68, 128,    |match-mapping|mapping-sent|
  |                   |  |  |  | 129, 131,   |             |            |
  |                   |  |  |  | 132, 137,   |             |            |
- |                   |  |  |  | 160, 163]   |             |            |
+ |                   |  |  |  | 160]        |             |            |
  |CoAP MID           |16|1 |Bi|0            |MSB(9)       |LSB         |
  +===================+==+==+==+=============+=============+============+
 ~~~
@@ -1518,18 +1767,19 @@ Conflict), 160 (5.00 Internal Server Error) and 163 (5.03 Service Unavailable).
 {{Fig-fsm}} summarizes the statuses of a rule on one end, and the transitions
 described in {{sec-rule-status}}. The `invalid` status has two phases: the Guard
 period is either waiting for the acknowledgement of the deletion sent by this
-end, or running.
+end, or running. The `origin` status is not shown: an `origin` rule is set by
+provisioning and never changes status.
 
 ~~~ aasvg
               +-------------------- T2 -----------------+
               |                                         v
-          +--------+    T1    +-----------+   T5    +--------+
+          +--------+    T1    +-----------+   T4    +--------+
           |        |--------->|           |-------->|        |
           |  free  |          | candidate |         | valid  |
-          |        |<---------|           |         |        |
-          +--------+    T3    +-----------+         +--------+
+          |        |          |           |         |        |
+          +--------+          +-----------+         +--------+
             |   ^               |    ^  |               |
-         T8 |   | T9         T6 |    +--+ T4            | T7
+         T7 |   | T8         T5 |    +--+ T3            | T6
             v   |               v                       v
         +-----------------------------------------------------+
         | guard waiting for ack                               |
@@ -1537,35 +1787,36 @@ end, or running.
         | guard running                                       |
         +-----------------------------------------------------+
                               |   ^
-                              +---+ T10
+                              +---+ T9
 ~~~
 {: #Fig-fsm title='Rule status state machine on one end'}
 
 * T1, `free` to `candidate`: the end decides to create a rule, with a rule ID in
   its part of the rule ID space (see {{sec-simultaneous-creation}}) that does
-  not overlap an existing rule ID. It sends the creation.
+  not overlap an existing rule ID. A rule ID whose Guard period has just ended
+  SHOULD NOT be chosen (see {{sec-guard-computation}}). It sends the creation.
 * T2, `free` to `valid`: a creation is received. The end answers 2.04 Changed.
-* T3, `candidate` to `free`: 4.09 Conflict is received for the creation.
-* T4, `candidate` to `candidate`: 5.03 Service Unavailable is received, the CoAP
-  exchange is abandoned, or the end restarts. The creation is repeated later,
-  with an increasing delay. A Device that receives a creation for this rule ID
-  answers 4.09 Conflict.
-* T5, `candidate` to `valid`: 2.04 Changed is received for the creation, a SCHC
+* T3, `candidate` to `candidate`: the CoAP exchange is abandoned, in particular
+  when the other end restarts (see {{sec-restart}}), or the end restarts. The
+  creation is repeated later, with an increasing delay. A Device that receives a
+  creation for this rule ID answers 4.09 Conflict.
+* T4, `candidate` to `valid`: 2.04 Changed is received for the creation, a SCHC
   PDU carrying the rule ID is received and decoded, or, on the Core only, a
   creation of the same rule ID is received from the Device. In the last case,
   the received rule replaces the `candidate` one, and the Core answers 2.04
   Changed. In all cases, the creation stops.
-* T6, `candidate` to `invalid`: a deletion is received (the Guard period starts,
+* T5, `candidate` to `invalid`: a deletion is received (the Guard period starts,
   the creation stops, the end answers 2.04 Changed), or the end gives up the
-  rule and sends a deletion (the Guard period waits for the acknowledgement).
-* T7, `valid` to `invalid`: the end sends a deletion (the Guard period waits for
+  rule, in particular when 4.09 Conflict is received for the creation, and
+  sends a deletion (the Guard period waits for the acknowledgement).
+* T6, `valid` to `invalid`: the end sends a deletion (the Guard period waits for
   the acknowledgement), or receives one (the Guard period starts, the end
   answers 2.04 Changed).
-* T8, `free` to `invalid`: a deletion is received for a free rule ID. The Guard
+* T7, `free` to `invalid`: a deletion is received for a free rule ID. The Guard
   period starts, and the end answers 2.04 Changed.
-* T9, `invalid` to `free`: the Guard period is over. The rule is marked `free`
+* T8, `invalid` to `free`: the Guard period is over. The rule is marked `free`
   or removed from the SoR.
-* T10, `invalid` to `invalid`:
+* T9, `invalid` to `invalid`:
   * 2.04 Changed is received for the deletion sent by the end: the Guard period
     starts;
   * the CoAP exchange of the deletion is abandoned, or the end restarts while
@@ -1573,12 +1824,19 @@ end, or running.
   * a deletion is received: the end answers 2.04 Changed, and the Guard period
     restarts, unless it is waiting for the acknowledgement of the deletion sent
     by the end;
-  * a creation is received: the end answers 5.03 Service Unavailable;
+  * a creation is received: the end answers 4.09 Conflict;
   * the end restarts while the Guard period is running: a new, complete Guard
     period starts.
+* T10, any status except `origin` to `invalid` (not shown in the figure): the
+  end sends a reset (the Guard period waits for the acknowledgement), or
+  receives one (the Guard period starts, the end answers 2.04 Changed), see
+  {{sec-reset-rpc}}. This also applies to a rule ID absent from the SoR.
 
 The following events do not change the status:
 
+* `origin`: a SCHC PDU carrying the rule ID is decoded with the rule. A deletion
+  is answered 4.03 Forbidden. A creation is answered as for a `valid` rule. A
+  reset does not change it.
 * `valid`: a SCHC PDU carrying the rule ID is decoded with the rule. A creation
   with the same content is answered 2.04 Changed, a creation with a different
   content or an overlapping rule ID is answered 4.09 Conflict.
@@ -1606,12 +1864,73 @@ The following events do not change the status:
   the universal options are part of the "entry-universal" list.
 * "Duplicate Rule": the status is an enumeration, the example uses an
   "entry-index", and the YANG fragment of the annex is aligned with the module.
+* "YANG Module": the module is moved from the appendix to the body of the
+  document, after the RPCs section. The RPCs section no longer says that the
+  definition of the RPCs is out of scope: this document defines
+  "duplicate-rule", other documents may define other RPCs. The abstract, the
+  introduction and "YANG Data Model" mention the module.
+* "Restart of a node": the Echo option is removed; without a stable
+  deduplication state, the requests are answered with 5.03 during
+  EXCHANGE_LIFETIME.
+* "Applicability statement": to change a rule, a new rule with another RuleID
+  is created, and the old one may then be deleted (instead of deleting the
+  rule and creating a new one).
+* New "Security Considerations" and "IANA Considerations" sections: protection
+  of the management traffic and of the "duplicate-rule" RPC, registration of
+  the namespace URI and of the module name. References to RFC 2119, RFC 8174,
+  RFC 3688, RFC 6020, RFC 7950 and RFC 8340 are added.
+* "Idempotent creation": definition of overlapping rule IDs, which do not have a
+  fixed length: one is a prefix of the other, as 110 and 110001.
+* "Rule status": a `valid` rule can be selected for compression or
+  fragmentation, and the SCHC PDUs carrying its rule ID are decompressed or
+  reassembled with it.
+* New `origin` status ({{sec-rule-status}}): the rules of the initial SoR,
+  including the management rules, are `origin` rules. They are used as `valid`
+  rules, cannot be modified or deleted (4.03 Forbidden), can be duplicated
+  except the management rules, and are the only rules kept by a reset. The
+  status is only set by provisioning, and is the default of "rule-status"
+  ("status-origin", derived from "status-valid"). "Rule Status and Guard
+  Period", "Simultaneous creation", "Rule deletion", "Restart of a node" and the
+  state machine ({{sec-fsm}}) are updated accordingly.
+* New "reset-context" RPC ({{sec-reset-rpc}}): it replaces the factory reset by
+  the deletion of the top-level object, which is now refused with 4.03
+  Forbidden. The invoking node applies the reset when it sends the request, the
+  other node when it receives it; all the rule IDs that are not `origin` become
+  `invalid` for a Guard period. Applying it only at the reception of the
+  response leads both nodes to disagree on the SoR. An end that restarts without
+  its rules should reset the SoR.
+* The YANG module is named "ietf-schc-basic-mgmt" (prefix "schc-bmgmt"), for
+  the basic management operations, and contains both RPCs; IANA and Security
+  Considerations are updated.
+* "Idempotent creation": a creation received during the Guard period is
+  refused with 4.09 Conflict again, instead of 5.03 Service Unavailable. On
+  4.09 Conflict, whatever its cause, the creator gives up its `candidate` rule
+  by deleting it, and may retry with another rule ID: the deletion makes the
+  rule `invalid` on both ends, so that a late copy of the creation cannot
+  create it again. "Guard period computation": the Guard periods of both ends
+  do not end at the same time, and a rule ID SHOULD NOT be used for a new rule
+  before MAX_TRANSMIT_SPAN + 2L after the end of its Guard period.
+  "Simultaneous creation", "Restart of a node", "reset-context" and the state
+  machine ({{sec-fsm}}) are updated: the transition from `candidate` to `free`
+  is removed, and the transitions are renumbered.
+* "Restart of a node": without a stable deduplication state, the management
+  requests are silently discarded during EXCHANGE_LIFETIME after the restart,
+  instead of being answered with 5.03 Service Unavailable; the other end repeats
+  them as after a loss. 5.03 Service Unavailable is no longer used, and is
+  removed from the codes of the management rules M2 and M4.
+* "Guard period computation": the numerical examples (G of 30 s, CoAP
+  transmission span of 45 s) are removed. L, G and the CoAP transmission
+  parameters depend on the network, possibly an interplanetary link; the CoAP
+  transmission parameters are configured accordingly, with a MAX_LATENCY of at
+  least L.
+* The refusal of a request on a management rule is a 4.03 Forbidden response
+  instead of an Unauthorized one.
 * "YANG Module" appendix (was "YANG DM"): the "duplicate-rule" RPC is no longer
   in the "ietf-schc" module of {{I-D.toutain-schc-rfc9363bis}}; it is defined in
-  the new "ietf-schc-rpc-duplicate" module of this document, which imports
+  the new "ietf-schc-basic-mgmt" module of this document, which imports
   "ietf-schc" and makes the RPC depend on its "management" feature. The
   descriptions of the RPC and of its status values are completed. The CORECONF
-  examples use the "/ietf-schc-rpc-duplicate:duplicate-rule" path.
+  examples use the "/ietf-schc-basic-mgmt:duplicate-rule" path.
 * "Example CORECONF usage in Python": the YANG requests use the
   "entry-universal" paths; the SID values and CBOR encodings, which depend on
   the SID file of the new module revision, have been removed and have to be
@@ -1694,7 +2013,7 @@ The following events do not change the status:
 * "Restart of a node" ({{sec-restart}}) added: the rules and their status should
   be kept in a stable memory, the Guard period of an `invalid` rule restarts
   after a restart, and the freshness of the management requests is checked when
-  the deduplication state is lost. {{RFC8613}} and {{RFC9175}} added to the
+  the deduplication state is lost. {{RFC8613}} and RFC 9175 added to the
   informative references.
 * Introduction: now starts with the three Rule types of {{RFC8724}} and the new
   management Rules, which {{I-D.toutain-schc-rfc9363bis}} introduces in the YANG
