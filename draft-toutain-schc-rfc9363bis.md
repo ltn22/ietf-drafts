@@ -97,11 +97,11 @@ compression/decompression (C/D) or fragmentation/reassembly (F/R), and
 {{RFC9363}} a YANG data model dedicated to LPWAN environments, where the
 Rules were most of the time installed directly in the SCHC end-points.
 
-This document defines an evolution of YANG data model {{RFC7950}} to represent compression,
-fragmentation, and management Rules, which leads to common representation for
-values for all the Rules' elements. The goal of this document is to update
-the formal description of the Rules, to extend SCHC to new environments, and
-to offer:
+This document defines an evolution of the YANG data model {{RFC7950}} to
+represent compression, fragmentation, and management Rules, which leads to a
+common representation for values for all the Rules' elements. The goal of
+this document is to update the formal description of the Rules, to extend SCHC
+to new environments, and to offer:
 
 * the same definition on both ends, even if the internal representation is
   different,
@@ -118,13 +118,13 @@ entries. Since the key of a list cannot be changed in a published
 module ({{Section 11 of RFC7950}}), a new list is defined and the previous
 one is deprecated.
 
-SCHC was originally designed around a shared context, fixed when the devices are deployed. This
-revision introduces context evolution: the SCHC instances create and delete
-Rules themselves, and fit the compression to the traffic they actually carry,
-while a generic description of the protocol options extends the compression to
-existing protocols. SCHC can then be used wherever header overhead matters,
-from LPWANs to 5G and 6G cellular networks, industrial networks, and
-deep-space links.
+SCHC was originally designed around a shared context, fixed when the devices
+are deployed. This revision introduces context evolution: the SCHC instances
+create and delete Rules themselves, and fit the compression to the traffic they
+actually carry, while a generic description of the protocol options extends the
+compression to existing protocols. SCHC can then be used wherever header
+overhead matters, from LPWANs to 5G and 6G cellular networks, industrial
+networks, and deep-space links.
 
 # Requirements Language {#requirements-language}
 
@@ -259,9 +259,10 @@ elements for a revision of this module:
   Rules by the SCHC instances themselves, with management Rules, a status for
   each Rule, and a Guard period.
 
-This document gathers these elements in a revision of
-the `ietf-schc` module, including the universal options, since they change the
-key of the compression Rule entries. 
+This document gathers these elements in a revision of the `ietf-schc`
+module, including the universal options, since they change the key of the
+compression Rule entries. The compression, the fragmentation, and the
+management are each selected by a feature.
 
 ## Main Updates from RFC 9363 {#update-from-rfc9363}
 
@@ -3420,7 +3421,9 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
   Rule Status, Space ID, and Universal Option.
 * SCHC Rules: fields are also specified by the Universal Option and ICMPv6
   compression documents.
-* SCHC Rules: the management can also be selected with a feature statement.
+* SCHC Rules: the management can also be selected with a feature statement;
+  the three features are listed together at the end of the "Evolution of the
+  SCHC Rules" subsection.
 * SCHC Rules: fields for the OSCORE Key Update (KUDOS).
 * SCHC Rules: the introduction, moved to a new subsection "Evolution of the
   SCHC Rules", is rewritten as a history of the data model:
