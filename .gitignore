@@ -1,2 +1,9 @@
 # LibreOffice lock files
 .~lock.*#
+
+# kdrfc / xml2rfc build artifacts (generated from the .md sources)
+.refcache/
+*.xml
+*.txt
+*.html
+*.pdf
