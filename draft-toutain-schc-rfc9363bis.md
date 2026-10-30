@@ -97,10 +97,7 @@ compression/decompression (C/D) or fragmentation/reassembly (F/R), and
 {{RFC9363}} a YANG data model dedicated to LPWAN environments, where the
 Rules were most of the time installed directly in the SCHC end-points.
 
-This revision of the data model extends the usage of SCHC to environments
-other than LPWANs.
-
-This document defines a YANG data model {{RFC7950}} to represent compression,
+This document defines an evolution of YANG data model {{RFC7950}} to represent compression,
 fragmentation, and management Rules, which leads to common representation for
 values for all the Rules' elements. The goal of this document is to update
 the formal description of the Rules, to extend SCHC to new environments, and
@@ -115,11 +112,19 @@ to offer:
   {{I-D.toutain-schc-coreconf-management}}.
 
 This data model is a revision of the `ietf-schc` module of {{RFC9363}}, and
-not an augmentation such as the one defined in
-{{I-D.ietf-schc-universal-option}}, since the key of the compression Rule
-entries is changed. Since the key of a list cannot be changed in a published
+not an augmentation, since the new format of the entries introduced by
+{{I-D.ietf-schc-universal-option}} changes the key of the compression Rule
+entries. Since the key of a list cannot be changed in a published
 module ({{Section 11 of RFC7950}}), a new list is defined and the previous
 one is deprecated.
+
+SCHC was originally designed around a shared context, fixed when the devices are deployed. This
+revision introduces context evolution: the SCHC instances create and delete
+Rules themselves, and fit the compression to the traffic they actually carry,
+while a generic description of the protocol options extends the compression to
+existing protocols. SCHC can then be used wherever header overhead matters,
+from LPWANs to 5G and 6G cellular networks, industrial networks, and
+deep-space links.
 
 # Requirements Language {#requirements-language}
 
@@ -219,25 +224,44 @@ Up:
 
 # SCHC Rules {#schc-rules}
 
-SCHC compression is generic; the main mechanism does not refer to a specific
-protocol. Any header field is abstracted through a Field Identifier (FID), a
-position (FP), a direction (DI), and a value that can be a numerical value or a
-string.
+## Evolution of the SCHC Rules {#rule-evolution}
 
-{{RFC8724}}, {{RFC8824}}, and {{I-D.ietf-schc-universal-option}}
-specify fields for IPv6 {{RFC8200}}, UDP {{RFC0768}}, and CoAP {{RFC7252}},
-including options defined for no server response {{RFC7967}} and Object
-Security for Constrained RESTful Environments (OSCORE) {{RFC8613}}, with its
-Key Update (KUDOS) extension {{I-D.ietf-core-oscore-key-update}}. For the
-latter, {{RFC8824}}, {{I-D.ietf-schc-8824-update}}, and
-{{I-D.ietf-schc-universal-option}} split this field into subfields.
-{{I-D.ietf-schc-icmpv6-compression}} specifies fields for ICMPv6 {{RFC4443}}.
+{{RFC8724}} defines the Rules in an informal way, for compression and
+fragmentation. SCHC compression is generic without
+referring to a specific protocol. {{RFC9363}} introduces a YANG data model to
+represent all these Rules, including the identifiers of the IPv6 {{RFC8200}},
+UDP {{RFC0768}}, and CoAP {{RFC7252}} fields defined in {{RFC8724}} and
+{{RFC8824}}, with the CoAP options for no server response {{RFC7967}} and
+Object Security for Constrained RESTful Environments (OSCORE) {{RFC8613}}.
 
-SCHC fragmentation requires a set of common parameters that are included in a
-Rule. These parameters are defined in {{RFC8724}}.
+Since then, other documents have made the data model evolve, either by defining
+their own data model, which augments the `ietf-schc` module, or by introducing
+elements for a revision of this module:
 
-The YANG data model enables the compression, the fragmentation, and the
-management to be selected separately using the feature statement.
+* {{RFC9441}} introduces the Compound ACK, with a data model that augments the
+  fragmentation Rule, so that a single acknowledgment can cover several
+  windows. It is considered as an augmentation of the data model, and remains
+  valid with this revision (see {{fragmentation-rule}});
+* {{I-D.ietf-schc-8824-update}} updates the compression of CoAP, and defines
+  the "var_bit" Field Length function;
+* {{I-D.ietf-schc-universal-option}} introduces a new format for the entries
+  of the Rules, which reference a protocol option by a Space ID and its option
+  number, instead of a specific Field ID per option. With {{RFC8824}} and
+  {{I-D.ietf-schc-8824-update}}, it splits the OSCORE option into subfields,
+  including the ones of its Key Update (KUDOS) extension
+  {{I-D.ietf-core-oscore-key-update}};
+* {{I-D.ietf-schc-icmpv6-compression}} specifies the compression of ICMPv6
+  {{RFC4443}}, with new Field IDs, Field Length functions, Matching Operators,
+  Compression Decompression Actions, and an Action applied to the packets
+  matching a Rule;
+* {{RFC9442}} uses a new RCS algorithm for SCHC over Sigfox;
+* {{I-D.toutain-schc-coreconf-management}} introduces the management of the
+  Rules by the SCHC instances themselves, with management Rules, a status for
+  each Rule, and a Guard period.
+
+This document gathers these elements in a revision of
+the `ietf-schc` module, including the universal options, since they change the
+key of the compression Rule entries. 
 
 ## Main Updates from RFC 9363 {#update-from-rfc9363}
 
@@ -288,8 +312,8 @@ describe a specific field in the header to be compressed.
 |+-------+--+--+--+------------+-----------------+---------------+||/
 ||Field N|FL|FP|DI|Target Value|Matching Operator|Comp/Decomp Act|||
 |+-------+--+--+--+------------+-----------------+---------------+|/
-|                                                                 |        
-\-----------------------------------------------------------------/  
+|                                                                 |
+\-----------------------------------------------------------------/
 ~~~
 {: #Fig-ctxt title="Compression Decompression Context"}
 
@@ -587,6 +611,12 @@ The acknowledgment fragment header goes in the opposite direction of data. {{RFC
 
 For ACK-on-Error, SCHC defines when an acknowledgment can be sent. This can be at any time defined by the Layer 2, at the end of a window (FCN all-0),
 or as a response to receiving the last fragment (FCN all-1). The naming convention is `ack-behavior` followed by the algorithm name.
+
+The SCHC Compound ACK {{RFC9441}} allows the bitmaps of several windows in a
+single SCHC ACK message (`bitmap-format` leaf). Only the last bitmap can be
+compressed, and the `last-bitmap-compression` leaf disables its compression.
+These leaves are defined by the module of {{RFC9441}}, which augments this
+data model (see {{fragmentation-rule}}).
 
 ### Timer Values {#timer-values}
 
@@ -3377,16 +3407,27 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
   end-points. The goal becomes to update the formal description of the Rules
   and to extend SCHC to new environments.
 * Introduction: the data model also represents the management Rules.
+* Introduction: new closing paragraph. The revision introduces context
+  evolution, the SCHC instances creating and deleting Rules to fit the
+  compression to the traffic, and describes the protocol options generically;
+  SCHC can then be used beyond LPWANs, including 5G and 6G cellular networks.
 * Introduction: third goal, the management of the Rules by the SCHC instances
   themselves (creation and deletion with CORECONF).
 * Introduction: why this document is a revision and not an augmentation of
-  RFC 9363 (new key of the compression entries).
+  RFC 9363 (new key of the compression entries). The universal options are a
+  new format of the entries, not an augmentation.
 * Terminology: new terms Action, Entry Index, Guard Period, Management Rule,
   Rule Status, Space ID, and Universal Option.
 * SCHC Rules: fields are also specified by the Universal Option and ICMPv6
   compression documents.
 * SCHC Rules: the management can also be selected with a feature statement.
 * SCHC Rules: fields for the OSCORE Key Update (KUDOS).
+* SCHC Rules: the introduction, moved to a new subsection "Evolution of the
+  SCHC Rules", is rewritten as a history of the data model:
+  the informal Rules of RFC 8724, the YANG data model of RFC 9363, then the
+  documents that augment the module (Compound ACK, whose augmentation remains
+  valid with this revision) or introduce elements for this revision (CoAP
+  update, universal options, ICMPv6, SCHC over Sigfox, Rule management).
 * New section "Convention for Space Identifier": options referenced by a
   Space ID and their option number (`space-id-base-type`, `space-id-coap`,
   `space-id-type`, common ancestor `space-field-id-base-type`), and
@@ -3422,6 +3463,9 @@ The informal Rules given {{Fig-example-rules}} are represented in XML, as shown 
   in the deprecated `entry` list.
 * Fragmentation Rule (Rule Definition): unchanged from RFC 9363, augmented by
   RFC 9441 to allow several bitmaps in a SCHC ACK message.
+* Acknowledgment Behavior: reference to the Compound ACK of RFC 9441, its
+  `bitmap-format` leaf and its `last-bitmap-compression` leaf, which disables
+  the compression of the last bitmap.
 * New section "Management Rule": management Rules, defined in
   draft-toutain-schc-coreconf-management, modify the Set of Rules, except the
   management Rules themselves; the Guard period, global to all the Rules and
