@@ -117,8 +117,16 @@ C/D:
 F/R:
 : SCHC Fragmenter/Reassembler, or SCHC Fragmentation/Reassembly.
 
-It also uses the following term, in addition to those defined in
+It also uses the following terms, in addition to those defined in
 {{RFC8724}}:
+
+Deduplication:
+: The detection, by the recipient of a CoAP message, that this message is a copy
+  of one it has already received, identified by its Message ID and its source
+  endpoint within EXCHANGE_LIFETIME ({{RFC7252}}, Section 4.5). The copy is
+  answered with the same response, and the request it carries is not processed
+  again. The deduplication state is the information a node keeps for that
+  purpose: the Message IDs it has received and the responses it has sent.
 
 Overlapping rule IDs:
 : Two different rule IDs overlap when one of them is a prefix of the other
@@ -524,23 +532,35 @@ retransmitted during MAX_TRANSMIT_SPAN ({{RFC7252}}) before B receives it and
 stops using the rule, so starting the Guard period any earlier could let a
 stale PDU from B arrive after it has already ended.
 
-{{Fig-Guard-timing}} shows these two arguments on a timeline (not to scale).
+{{Fig-Guard-timing}} shows these two arguments, with the time going down (not to
+scale). The single lines are SCHC PDUs and the double lines are the management
+messages. A slanted line is a message in flight, which takes at most L. The
+figure ends with B creating X again as soon as its Guard period is over, while
+the Guard period of A is still running: A refuses the creation with 4.09
+Conflict.
 
 ~~~ aasvg
----+--------+-----------+-------------------------------------------------
-   tA       tB          tA'
-
-            <-------------->
-              Guard(B), >= L, starts when B gets delete(X)
-                  ^
-    A's last PDU(X)
-
-                        <-------------->
-                          Guard(A), >= L, starts when A gets the Ack
-                           ^
-             B's last PDU(X)
+                    A                             B
+                    |                             |
+     last PDU(X)    |----------\                  |
+   tA  delete(X)    |===\       \      /----------| last PDU(X)
+       X invalid    |    ========\====/==========>|--- tB  X invalid
+                    |       /=====\==/============| |
+                    |      /       \/             | |
+                    |     /        /\             | |  Guard(B)
+                    |    /        /  \            | |  >= L
+        tA'  Ack ---|<===        /    \---------->| |  dropped
+         dropped  | |<----------/                 | v
+                  | |                             |---
+         Guard(A) | |       /=====================| X free
+         >= L     | |      /   create(X)          | X candidate
+                  | |<=====                       |
+                  v |=======\                     |
+                 ---|        \   4.09 Conflict    |
+           X free   |         ===================>|
+                    |                             |
 ~~~
-{: #Fig-Guard-timing title='Why a Guard period of L suffices on each end'}
+{: #Fig-Guard-timing title='Why a Guard period of L suffices on each end, and a creation refused during the Guard period of A'}
 
 Both ends then use the same Guard period
 
@@ -570,7 +590,8 @@ deduplication.
 Without crossing deletions, the Guard period of A ends at least as late as the
 one of B. A creation initiated by A therefore reaches a B whose Guard period is
 over. A creation initiated by B may arrive when the Guard period of A is still
-running, and be refused with 4.09 Conflict (see {{sec-idempotent-creation}}).
+running, and be refused with 4.09 Conflict (see {{sec-idempotent-creation}} and
+the end of {{Fig-Guard-timing}}).
 The Guard period of A ends at most MAX_TRANSMIT_SPAN + 2L after the one of B:
 the acknowledgement of the deletion may be lost, and the deletion repeated
 during MAX_TRANSMIT_SPAN ({{RFC7252}}), while the deduplication prevents these
@@ -584,17 +605,28 @@ confused with a stale PDU of the deleted one.
 
 ## Restart of a node {#sec-restart}
 
-Since management changes the SoR while the SCHC instance is running, the rules
-and their status SHOULD be stored in a stable memory, which survives a restart.
-Otherwise, an end that restarts loses the rules created or deleted by
-management, while the other end still uses them, and an `invalid` rule would be
-considered as `free` before the end of its Guard period. The `origin` rules are
-not concerned, since they are part of the initial SoR. An end that restarts
-without its rules has only its `origin` rules: it SHOULD then reset the SoR with
-the "reset-context" RPC (see {{sec-reset-rpc}}), before any other management
-request, so that both ends come back to the same SoR. 
+Management changes the SoR while the SCHC instance is running. A restart can
+therefore make the two ends disagree on the SoR, and what a node does after a
+restart depends on whether it keeps the rules and their status in a stable
+memory. The `origin` rules are not concerned, since they are part of the initial
+SoR.
 
-When the rules are kept, after a restart:
+Whatever the memory of the rules, the deduplication state of CoAP (see
+{{sec-rule-deletion}}) is usually lost during a restart, so that a copy of a
+management request sent before the restart could be processed again. If this
+state is not kept in a stable memory, the end MUST silently discard the
+management requests during EXCHANGE_LIFETIME ({{RFC7252}}) after the restart, as
+if it had not restarted yet, so that the copies sent before the restart are no
+longer in flight when it processes requests again. For the other end, this
+cannot be distinguished from a loss: the CoAP exchange is abandoned and the
+request is repeated later, a rule being created stays `candidate`, and a rule
+being deleted stays `invalid`. When OSCORE is used, its replay window is
+recovered after a restart as described in Appendix B.1.2 of {{RFC8613}}.
+
+### Node with a stable memory {#sec-restart-stable}
+
+The rules and their status SHOULD be stored in a stable memory, which survives a
+restart. When the rules are kept, after a restart:
 
 * a `candidate` rule stays `candidate`, and the creation is repeated;
 * an `invalid` rule whose deletion has not been acknowledged stays `invalid`,
@@ -605,17 +637,14 @@ When the rules are kept, after a restart:
   4.09 Conflict, and the other end deletes its `candidate` rule (see
   {{sec-idempotent-creation}}).
 
-The deduplication state of CoAP (see {{sec-rule-deletion}}) is usually lost
-during a restart, so that a copy of a management request sent before the restart
-could be processed again. If this state is not kept in a stable memory, the end
-MUST silently discard the management requests during EXCHANGE_LIFETIME
-({{RFC7252}}) after the restart, as if it had not restarted yet, so that the
-copies sent before the restart are no longer in flight when it processes
-requests again. For the other end, this cannot be distinguished from a loss:
-the CoAP exchange is abandoned and the request is repeated later, a rule being
-created stays `candidate`, and a rule being deleted stays `invalid`. When OSCORE
-is used, its replay window is recovered after a restart as described in
-Appendix B.1.2 of {{RFC8613}}.
+### Stateless node {#sec-restart-stateless}
+
+A node without stable memory loses, when it restarts, the rules created or
+deleted by management, while the other end still uses them, and an `invalid`
+rule would be considered as `free` before the end of its Guard period. It has
+only its `origin` rules: it SHOULD then reset the SoR with the "reset-context"
+RPC (see {{sec-reset-rpc}}), before any other management request, so that both
+ends come back to the same SoR.
 
 # Management messages
 

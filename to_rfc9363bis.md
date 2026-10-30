@@ -33,7 +33,8 @@ To add to the normative references:
   ~~draft-ietf-schc-icmpv6-compression~~, which define the new Field IDs,
   functions, MOs and CDAs.
 
-To add to the informative references: ~~RFC 4443 (ICMPv6)~~, RFC 7641
+To add to the informative references: ~~RFC 4443 (ICMPv6)~~, ~~RFC 9442 (SCHC
+over Sigfox, for its RCS)~~, RFC 7641
 (Observe), RFC 7959 (Block), RFC 8407 (YANG guidelines),
 ~~draft-ietf-core-oscore-key-update (KUDOS)~~, ~~draft-barthel-lpwan-oam-schc
 (Action: not needed, the Action is defined in
@@ -78,6 +79,9 @@ Add:
   and that "entry-universal" is "ordered-by user", the entry index being
   assigned sequentially.~~ Done in the Compression Rule section, which
   describes "compression-universal".
+* ~~State that compression is optional in the data model and depends on the
+  "compression" feature, as is done for fragmentation.~~ Done at the beginning
+  of the Compression Rules section.
 
 ### 5.2 Identifier Generation (Section 4.2)
 
@@ -165,6 +169,13 @@ draft-ietf-schc-icmpv6-compression.
 * Compound ACK: not merged. The "ietf-schc-compound-ack" module of RFC 9441
   stays an external module augmenting "ietf-schc". ~~Mention it in the
   Fragmentation Rule section (RFC 9441 as informative reference).~~
+* ~~RCS (Last Fragment Format): describe the "rcs-algorithm" leaf, "rcs-crc32"
+  as the default (RFC 8724 recommends it, the Profile specifies the integrity
+  check), and add the "rcs-frag-count" identity for the RCS of SCHC over Sigfox
+  (RFC 9442): the RCS carries the number of fragments in the last window,
+  All-1 fragment included, and has the size of "fcn-size".~~ Done in the Last
+  Fragment Format and Main Updates sections, and in the module (identity and
+  revision statement).
 
 ## 6. Rule Definition (RFC 9363 Section 5)
 
