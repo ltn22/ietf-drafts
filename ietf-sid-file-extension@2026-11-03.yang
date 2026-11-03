@@ -1,0 +1,214 @@
+module ietf-sid-file-extension {
+  yang-version 1.1;
+  namespace "urn:ietf:params:xml:ns:yang:ietf-sid-file-extension";
+  prefix sid-ext;
+
+  import ietf-sid-file {
+    prefix sid;
+    reference "RFC 9595";
+  }
+
+  import ietf-yang-structure-ext {
+    prefix sx;
+    reference "RFC 8791";
+  }
+
+  organization "Personal contribution";
+  contact
+    "Editor: Laurent Toutain
+      <mailto:laurent.toutain@imt-atlantique.fr>
+
+             Javier A. Fernandez
+             <mailto:javier-alejandro.fernandez@imt-atlantique.fr>
+
+             Vojtěch Vilímek
+             <mailto:vojtech.vilimek@nic.cz>";
+  description
+    "Augmentation of ietf-sid-file to add, to each item, the type
+     information of a leaf or a leaf-list, or the key leaves of a
+     list.";
+
+  revision 2026-11-03 {
+    description
+      "The key-mapping at the sid-file level is replaced by the
+       keys of each list item, since the root of the sid-file
+       structure cannot be augmented (RFC 8791). The type and
+       the keys of an item are in a choice.";
+    reference "draft-toutain-core-sid-extension";
+  }
+
+  revision 2026-07-19 {
+    description "IETF 126 Hackathon refinements";
+    reference "draft-toutain-core-sid-extension";
+  }
+
+  revision 2026-04-28 {
+    description "Initial revision.";
+    reference "draft-toutain-core-sid-extension";
+  }
+
+  // it may be better if NETMOD created a YANG Module
+  // with identities for built-in types
+
+  identity yang-base-type {
+    description "Base identity for all YANG built-in types.";
+  }
+
+  identity anydata {
+    base yang-base-type;
+    description "YANG built-in type anydata.";
+  }
+
+  identity anyxml {
+    base yang-base-type;
+    description "YANG built-in type anyxml.";
+  }
+
+  identity binary {
+    base yang-base-type;
+    description "YANG built-in type binary.";
+  }
+
+  identity boolean {
+    base yang-base-type;
+    description "YANG built-in type boolean.";
+  }
+
+  identity decimal64 {
+    base yang-base-type;
+    description "YANG built-in type decimal64.";
+  }
+
+  identity empty {
+    base yang-base-type;
+    description "YANG built-in type empty.";
+  }
+
+  identity identityref {
+    base yang-base-type;
+    description "YANG built-in type identityref.";
+  }
+
+  identity instance-identifier {
+    base yang-base-type;
+    description "YANG built-in type instance-identifier.";
+  }
+
+  identity int8 {
+    base yang-base-type;
+    description "YANG built-in type int8.";
+  }
+
+  identity int16 {
+    base yang-base-type;
+    description "YANG built-in type int16.";
+  }
+
+  identity int32 {
+    base yang-base-type;
+    description "YANG built-in type int32.";
+  }
+
+  identity int64 {
+    base yang-base-type;
+    description "YANG built-in type int64.";
+  }
+
+  identity leafref {
+    base yang-base-type;
+    description "YANG built-in type leafref.";
+  }
+
+  identity string {
+    base yang-base-type;
+    description "YANG built-in type string.";
+  }
+
+  identity uint8 {
+    base yang-base-type;
+    description "YANG built-in type uint8.";
+  }
+
+  identity uint16 {
+    base yang-base-type;
+    description "YANG built-in type uint16.";
+  }
+
+  identity uint32 {
+    base yang-base-type;
+    description "YANG built-in type uint32.";
+  }
+
+  identity uint64 {
+    base yang-base-type;
+    description "YANG built-in type uint64.";
+  }
+
+  identity union {
+    base yang-base-type;
+    description "YANG built-in type union.";
+  }
+
+  typedef yang-type {
+    type identityref {
+      base yang-base-type;
+    }
+    description
+      "An identityref that selects one of the YANG built-in types
+       defined in this module.";
+  }
+
+  // --- Augmentation: type or keys of each item ---
+  sx:augment-structure "/sid:sid-file/sid:item" {
+    // This augmentation targets the item list of the
+    // /sid:sid-file structure (sx:structure, not the grouping).
+    description
+      "Adds type information or key leaves to each SID item.";
+    choice node-info {
+      description
+        "Type information for a leaf or a leaf-list, or the key
+         leaves for a list.";
+      container type {
+        description
+          "Type of the data node identified by the SID.";
+        leaf base-type {
+          type yang-type;
+          description "YANG built-in type of the data node.";
+        }
+        leaf identityref {
+          type uint64;
+          description "SID of the referenced identity.";
+        }
+        container enumerate {
+          description "Item of an enumeration.";
+          leaf enum-value {
+            type uint32;
+            description "Value of the enumeration item.";
+          }
+          leaf enum-name {
+            type string;
+            description "Name of the enumeration item.";
+          }
+        }
+        container bits {
+          description "Item of a bits type.";
+          leaf bit-position {
+            type uint32;
+            description "Position of the bit item.";
+          }
+          leaf bit-name {
+            type string;
+            description "Name of the bit item.";
+          }
+        }
+      }
+      leaf-list keys {
+        type sid:sid;
+        ordered-by user;
+        description
+          "Present only when the item is a YANG list: SIDs of its
+           key leaves, in the order of the key statement.";
+      }
+    }
+  }
+}
