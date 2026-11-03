@@ -1,7 +1,7 @@
 ---
 stand_alone: true
 ipr: trust200902
-docname: draft-toutain-core-sid-extension
+docname: draft-toutain-core-sid-extension-00
 cat: std
 pi:
   symrefs: 'yes'
@@ -114,54 +114,106 @@ sensors returning an integer value.
 
 ~~~~
 <CODE BEGINS> file "sensor.yang"
+
 module sensor {
   yang-version 1.1;
   namespace "http://sensorexample.in/sensor-example";
   prefix sen1;
 
+  organization
+    "Internet Engineering Task Force (IETF), CORE Working Group.";
+
+  contact
+    "CORE Working Group.";
+
+  description
+    "An illustrative YANG module used to demonstrate the
+     serialization of a physical object with battery status,
+     an LED indicator, and attached sensors.";
+
+  revision 2026-11-02 {
+    description
+      "Initial revision.";
+    reference
+      "draft-toutain-core-sid-extension-00";
+  }
+
   identity battery-indicator-base-type {
     description
-      "a base identity for battery level indicator";
+      "Base identity for battery level indicators.";
   }
 
   identity high-level {
     base battery-indicator-base-type;
+    description
+      "Indicates a high battery level.";
   }
 
   identity med-level {
     base battery-indicator-base-type;
+    description
+      "Indicates a medium battery level.";
   }
 
   identity low-level {
     base battery-indicator-base-type;
+    description
+      "Indicates a low battery level.";
   }
 
   typedef battery-level {
     type identityref {
       base battery-indicator-base-type;
     }
+    description
+      "Represents the battery level using an identity.";
   }
 
   container sensorObject {
+    description
+      "Represents a physical object containing sensors.";
+
     leaf statusLED {
       type enumeration {
-        enum green  {value 0;}
-        enum yellow {value 1;}
-        enum red {value 2;}
+        enum green {
+          value 0;
+          description "Green LED indicator.";
+        }
+        enum yellow {
+          value 1;
+          description "Yellow LED indicator.";
+        }
+        enum red {
+          value 2;
+          description "Red LED indicator.";
+        }
       }
+      description
+        "Indicates the status LED color.";
     }
+
     leaf battery {
-        type battery-level;
+      type battery-level;
+      description
+        "Indicates the battery level.";
     }
+
     list sensorReadings {
       key "index";
+      description
+        "Contains measurements from attached sensors.";
+
       leaf index {
         type uint8;
-      }
-      leaf sensorValue {
-        type uint32;
+        description
+          "Identifies the sensor reading.";
       }
 
+      leaf sensorValue {
+        type uint32;
+        description
+          "Contains the integer sensor measurement.";
+      }
     }
   }
 }
@@ -249,7 +301,7 @@ SID        Assigned to
 60009      data /sensor:sensorObject/sensorReadings/sensorValue
 60010      data /sensor:sensorObject/statusLED
 
-File sensor@unknown.sid created
+File sensor@2026-11-02.sid created
 Number of SIDs available : 100
 Number of SIDs used : 11
 ~~~~
@@ -257,32 +309,36 @@ Number of SIDs used : 11
 
 To perform the allocation, the pyang utility generates a .sid file in
 the JSON format, resulting in a YANG Data Model specified in
-{{I-D.ietf-core-sid}}. {{Fig-SID-file}} gives an excerpt.
+{{I-D.ietf-core-sid}}. {{Fig-SID-file}} gives an excerpt. The .sid file
+is an instance of the "sid-file" YANG data structure {{RFC8791}}. Since a
+SID is a 64-bit integer, its value is encoded as a JSON string
+({{RFC7951}}).
 
 ~~~~
 {
-  "assignment-range": [
-    {
-      "entry-point": 60000,
-      "size": 100
-    }
-  ],
-  "module-name": "sensor",
-  "module-revision": "unknown",
-  "item": [
-    {
-      "namespace": "module",
-      "identifier": "sensor",
-      "status": "unstable",
-      "sid": 60000
-    },
-    {
-      "namespace": "identity",
-      "identifier": "battery-indicator-base-type",
-      "status": "unstable",
-      "sid": 60001
-    },
-    ...
+  "ietf-sid-file:sid-file": {
+    "module-name": "sensor",
+    "module-revision": "2026-11-02",
+    "assignment-range": [
+      {
+        "entry-point": "60000",
+        "size": "100"
+      }
+    ],
+    "item": [
+      {
+        "namespace": "module",
+        "identifier": "sensor",
+        "status": "unstable",
+        "sid": "60000"
+      },
+      {
+        "namespace": "identity",
+        "identifier": "battery-indicator-base-type",
+        "status": "unstable",
+        "sid": "60001"
+      },
+      ...
 ~~~~
 {: #Fig-SID-file title="Excerpt of the .sid file."}
 
@@ -319,7 +375,7 @@ Diagnostic notation:
 ~~~~
 {: #Fig-CBOR title="CBOR serialization of the example data."}
 
-# Conversion between JSON and CBOR
+# Conversion between JSON and CBOR {#conversion}
 
 Even if the conversion between CBOR and JSON formats might look obvious,
 including data compatible with a YANG Data Model is not so trivial. The
@@ -349,90 +405,13 @@ there is no such clue.
 In the other direction, a JSON string may correspond to a 64-bit
 integer, an enumeration, or an identityref.
 
-To perform the conversion, the YANG type must be known, but do not
-appear in the SID file, a converter has to refer directly to the YANG
-model, which is a more complex structure to parse.
+To perform the conversion, the YANG type must be known. Since it does
+not appear in the SID file, a converter has to refer directly to the
+YANG model, which is a more complex structure to parse. The SID file
+extension adds the type of each leaf to the .sid file (see
+{{sid-ext-type}}).
 
-SID extension propose to add this information directly in the sid file
-but augmenting the YANG Data Model that defines it {{RFC9595}} (see
-{{Fig-SID-extension}}). The augmentation is specified in the YANG
-module of {{sid-ext-yang}}.
-
-## YANG Data Model of the SID Extension {#sid-ext-model}
-
-The "type" container is added to each SID item that is a leaf. When the
-"type" container is not present, the node is not a leaf and there is no
-need for type conversion.
-
-Its "base-type" leaf identifies the YANG built-in type of the leaf. The
-sid-extension data model (cf. {{sid-ext-yang}}) defines an identityref
-for each YANG built-in type. If the model uses a derived type, defined
-by a typedef, "base-type" gives the built-in type it derives from, since
-a typedef is not an item of the .sid file ({{RFC9595}}).
-
-For a type derived from an identityref, "base-type" is "identityref" and
-the "identityref" leaf gives the SID of the base identity. In the CBOR
-notation, a pair "{ ...., SID1: value1, ...}" in the CBOR Map is
-resolved by a first lookup in the .sid file for SID1, which returns that
-the type is "identityref", and a second lookup for value1 in the
-"identity" namespace, which returns the ASCII identifier.
-
-For an enumeration, the "enumerate" container associates a value
-("enum-value") with its name ("enum-name").
-
-For bits, the "bits" container associates a position ("bit-position")
-with its name ("bit-name").
-
-The container "type" may contain several structures reflecting a
-union, disambiguated by CORECONF through the use of CBOR tags.
-
-~~~~
-...
-    {
-      "namespace": "data",
-      "identifier": "/sensor:sensorObject",
-      "status": "unstable",
-      "sid": 60005
-    },
-    {
-      "namespace": "data",
-      "identifier": "/sensor:sensorObject/battery",
-      "status": "unstable",
-      "sid": 60006,
-      "ietf-sid-file-extension:type": {
-        "base-type": "ietf-sid-file-extension:identityref",
-        "identityref": 60001
-      }
-    },
-    {
-      "namespace": "data",
-      "identifier": "/sensor:sensorObject/sensorReadings",
-      "status": "unstable",
-      "sid": 60007
-    },
-    {
-      "namespace": "data",
-      "identifier": "/sensor:sensorObject/sensorReadings/index",
-      "status": "unstable",
-      "sid": 60008,
-      "ietf-sid-file-extension:type": {
-        "base-type": "ietf-sid-file-extension:uint8"
-      }
-    },
-    {
-      "namespace": "data",
-      "identifier": "/sensor:sensorObject/sensorReadings/sensorValue",
-      "status": "unstable",
-      "sid": 60009,
-      "ietf-sid-file-extension:type": {
-        "base-type": "ietf-sid-file-extension:uint32"
-      }
-    }
-...
-~~~~
-{: #Fig-SID-extension title="SID file with the type extension."}
-
-# Navigating the CORECONF Structure
+# Navigating the CORECONF Structure {#navigating}
 
 As we saw, the CORECONF data is structured as a tree. The
 {{Fig-coreconf-ex}} gives an example for the example module described in
@@ -465,47 +444,148 @@ return the subtree with all its values. Going deeper in this sub-tree
 imposes the use of keys. For instance, to get a specific "sensorValue"
 one must provide the key "index" (60008).
 
-In {{I-D.ietf-core-comi}}, the series of keys needed to reach a specific
-element is provided either in the query string or in the fetch. Only one
-list is provided in {{Fig-coreconf-ex}}, but several lists can be
-embedded, and each level may require one or more keys. So, to be
-processed, the YANG Data Model has to be known.
+In {{I-D.ietf-core-comi}}, accessing a specific element within a YANG
+list requires providing the corresponding list keys in the request (e.g.,
+FETCH). While {{Fig-coreconf-ex}} illustrates a simple case involving a
+single list, a data model may contain several nested lists, and each list
+may require one or more keys. Determining which keys are required at each
+level normally requires knowledge of the YANG Data Model. The SID file
+extension adds the keys of each list to the .sid file (see
+{{sid-ext-key-mapping}}).
 
+# SID File Extension {#sid-ext-model}
 
-## YANG Data Model of the key mapping {#sid-ext-key-mapping}
+The SID file extension adds to the .sid file the information needed to
+convert values between JSON and CBOR (see {{conversion}}) and to navigate
+in a CORECONF structure (see {{navigating}}), without the YANG Data Model.
+It augments the "item" list of the "sid-file" YANG data structure
+{{RFC9595}}, using the structure augmentation of {{RFC8791}}. The YANG
+module is given in {{sid-ext-yang}}.
 
-To avoid parsing the YANG Data Model on a constrained device, we propose
-to summarize this information into a JSON Object as shown in {{Fig-key-mapping}}.
+An item of the .sid file identifies a node of the YANG Data Model. For
+the extension, three kinds of items are distinguished
+({{Tab-items}}):
 
-~~~~~json
-  "ietf-sid-file-extension:key-mapping": {
-    "entry": [
+| Item                         | Extension  | Usage                       |
+|------------------------------|------------|-----------------------------|
+| leaf, leaf-list              | "type"     | conversion of the value     |
+| list                         | "keys"     | selection of a list entry   |
+| module, identity, feature, container, ... | none | -                 |
+{: #Tab-items title="Extension of the items of the .sid file."}
+
+A node is never both a leaf and a list. The "type" container and the
+"keys" leaf-list are therefore the two cases of a choice: an item
+contains one of them, or none. {{Fig-SID-extension}} shows the three
+kinds of items for the example module: the container "sensorObject"
+(60005) has no extension, the leaves "battery" (60006), "index" (60008),
+and "sensorValue" (60009) have a "type", and the list "sensorReadings"
+(60007) has "keys".
+
+~~~~
+...
       {
-        "list-sid": 60007,
-        "key-sids": [60008]
+        "namespace": "data",
+        "identifier": "/sensor:sensorObject",
+        "status": "unstable",
+        "sid": "60005"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/sensor:sensorObject/battery",
+        "status": "unstable",
+        "sid": "60006",
+        "ietf-sid-file-extension:type": {
+          "base-type": "ietf-sid-file-extension:identityref"
+        }
+      },
+      {
+        "namespace": "data",
+        "identifier": "/sensor:sensorObject/sensorReadings",
+        "status": "unstable",
+        "sid": "60007",
+        "ietf-sid-file-extension:keys": ["60008"]
+      },
+      {
+        "namespace": "data",
+        "identifier": "/sensor:sensorObject/sensorReadings/index",
+        "status": "unstable",
+        "sid": "60008",
+        "ietf-sid-file-extension:type": {
+          "base-type": "ietf-sid-file-extension:uint8"
+        }
+      },
+      {
+        "namespace": "data",
+        "identifier": "/sensor:sensorObject/sensorReadings/sensorValue",
+        "status": "unstable",
+        "sid": "60009",
+        "ietf-sid-file-extension:type": {
+          "base-type": "ietf-sid-file-extension:uint32"
+        }
       }
-    ]
-  }
-~~~~~
-{: #Fig-key-mapping title="key-mapping of the SID file."}
+...
+~~~~
+{: #Fig-SID-extension title="SID file with the type and keys extension."}
 
-The "key-mapping" container is added at the "sid-file" level. It
-contains a list of "entry" objects. Each entry gives, in "list-sid", the
-SID of a YANG list and, in "key-sids", the array of the SIDs acting as
-YANG keys for that YANG list. The "key-mapping" container indicates:
 
-* that a SID is a YANG list, since its value appears as the "list-sid"
-  of an entry.
-* the number of elements in the corresponding "key-sids" array indicates
-  how many items are involved as a YANG list key. The value for these
-  items can be taken from the request.
-* the array also indicates, in the order of the YANG keys, which SIDs
-  contain the value that must be compared to the YANG list key sent in
-  the request.
+## Type of a Leaf {#sid-ext-type}
 
-With the information contained in the "key-mapping" structure, it is
-possible to browse any CORECONF structure and return the appropriate
-requested SID without the need to go back to the original YANG file.
+The "type" container is added to each SID item that is a leaf or a
+leaf-list. Its "base-type" leaf identifies the YANG built-in type of the leaf. The
+sid-extension data model (cf. {{sid-ext-yang}}) defines an identityref
+for each YANG built-in type. If the model uses a derived type, defined
+by a typedef, "base-type" gives the built-in type it derives from, since
+a typedef is not an item of the .sid file ({{RFC9595}}).
+
+For a type derived from an identityref, "base-type" is "identityref". In
+the CBOR notation, a pair "{ ...., SID1: value1, ...}" in the CBOR Map is
+resolved by a first lookup in the .sid file for SID1, which returns that
+the type is "identityref", and a second lookup for value1 in the
+"identity" namespace, which returns the ASCII identifier. In the other
+direction, the ASCII identifier gives the SID of the identity. The base
+identity is not needed for the conversion, and is not given in the
+"type" container.
+
+For an enumeration, the "enumerate" container associates a value
+("enum-value") with its name ("enum-name").
+
+For bits, the "bits" container associates a position ("bit-position")
+with its name ("bit-name").
+
+The container "type" may contain several structures reflecting a
+union, disambiguated by CORECONF through the use of CBOR tags.
+
+## Keys of a List {#sid-ext-key-mapping}
+
+To avoid requiring constrained devices to parse and store the full YANG
+Data Model, we propose to embed a footprint of the Data Model into the
+SID file: the item of each YANG list gives the SIDs of its key leaf
+nodes, preserving their order as defined in the YANG Data Model. In
+{{Fig-SID-extension}}, the item of the list "sensorReadings" (60007)
+gives the SID of its key "index" (60008).
+
+The "keys" leaf-list is added to each SID item that is a YANG list. It
+indicates:
+
+* that the SID is a YANG list, since its item contains "keys".
+* the number of elements in the "keys" array indicates how many leaves
+  are involved as a YANG list key. The value for these leaves can be
+  taken from the request.
+* the array also indicates, in the order of the "key" statement of the
+  YANG list, which SIDs contain the value that must be compared to the
+  YANG list key sent in the request.
+
+The keys are given in the item of the list, and not in a table at the
+"sid-file" level, since {{RFC8791}} does not allow the augmentation of
+the root of a YANG data structure. The key leaves of a list belong to the
+same module as the list, so the .sid file containing a list also
+contains its keys. A tool loading several .sid files builds a global
+table, from the SID of a list to the SIDs of its keys, by gathering the
+"keys" of the items of all these files.
+
+With the information contained in the "keys" leaf-lists, it is possible
+to browse any CORECONF structure and return the appropriate requested
+SID without the need to go back to the original YANG file.
 
 
 --- back
@@ -513,11 +593,12 @@ requested SID without the need to go back to the original YANG file.
 # YANG Module for the SID File Extension {#sid-ext-yang}
 
 The module below augments the "ietf-sid-file" module of {{RFC9595}}
-using the structure augmentation of {{RFC8791}}. It adds the type
-information to each SID item and a key-mapping at the "sid-file" level.
+using the structure augmentation of {{RFC8791}}. It adds, to each SID
+item, either the type information of a leaf or a leaf-list, or the keys
+of a list.
 
 ~~~~ yang
-<CODE BEGINS> file "ietf-sid-file-extension@2026-07-19.yang"
+<CODE BEGINS> file "ietf-sid-file-extension@2026-11-03.yang"
 module ietf-sid-file-extension {
   yang-version 1.1;
   namespace "urn:ietf:params:xml:ns:yang:ietf-sid-file-extension";
@@ -544,15 +625,29 @@ module ietf-sid-file-extension {
              Vojtěch Vilímek
              <mailto:vojtech.vilimek@nic.cz>";
   description
-    "Augmentation of ietf-sid-file to add type information
-     per item and key-mapping at the sid-file level.";
+    "Augmentation of ietf-sid-file to add, to each item, the type
+     information of a leaf or a leaf-list, or the key leaves of a
+     list.";
+
+  revision 2026-11-03 {
+    description
+      "The key-mapping at the sid-file level is replaced by the
+       keys of each list item, since the root of the sid-file
+       structure cannot be augmented (RFC 8791). The type and
+       the keys of an item are in a choice. The SID of the base
+       identity of an identityref is removed, since it is not
+       needed for the conversion.";
+    reference "draft-toutain-core-sid-extension";
+  }
 
   revision 2026-07-19 {
     description "IETF 126 Hackathon refinements";
+    reference "draft-toutain-core-sid-extension";
   }
 
   revision 2026-04-28 {
     description "Initial revision.";
+    reference "draft-toutain-core-sid-extension";
   }
 
   // it may be better if NETMOD created a YANG Module
@@ -666,62 +761,52 @@ module ietf-sid-file-extension {
        defined in this module.";
   }
 
-  // --- Augmentation 1: within the grouping, via its point of use ---
+  // --- Augmentation: type or keys of each item ---
   sx:augment-structure "/sid:sid-file/sid:item" {
-    // This augmentation targets the expanded list inside the /sid:sid-file/sid:item,
-    // the /sid:sid-file is sx:structure, not grouping (even through it is defined inside grouping)
+    // This augmentation targets the item list of the
+    // /sid:sid-file structure (sx:structure, not the grouping).
     description
-      "Adds type information to each SID item.";
-    container type {
-      leaf base-type {
-        type yang-type;
-      }
-      leaf identityref {
-        type uint64;
-        description "SID of the referenced identity.";
-      }
-      container enumerate {
-        leaf enum-value {
-          type uint32;
-          description "Value of the enumeration item.";
-        }
-        leaf enum-name {
-          type string;
-          description "Name of the enumeration item.";
-        }
-      }
-      container bits {
-        leaf bit-position {
-          type uint32;
-          description "Position of the bit item.";
-        }
-        leaf bit-name {
-          type string;
-          description "Name of the bit item.";
-        }
-      }
-    }
-  }
-
-  // --- Augmentation 2: at the sid-file level, excluding items ---
-  sx:augment-structure "/sid:sid-file" {
-    description
-      "Adds key-mapping at the sid-file level.";
-    container key-mapping {
+      "Adds type information or key leaves to each SID item.";
+    choice node-info {
       description
-        "Maps each list SID to the ordered list of SIDs
-         of its key leaves.";
-      list entry {
-        key "list-sid";
-        leaf list-sid {
-          type sid:sid;
-          description "SID of the list node.";
+        "Type information for a leaf or a leaf-list, or the key
+         leaves for a list.";
+      container type {
+        description
+          "Type of the data node identified by the SID.";
+        leaf base-type {
+          type yang-type;
+          description "YANG built-in type of the data node.";
         }
-        leaf-list key-sids {
-          type sid:sid;
-          ordered-by user;
-          description "SIDs of the key leaves, in key order.";
+        container enumerate {
+          description "Item of an enumeration.";
+          leaf enum-value {
+            type uint32;
+            description "Value of the enumeration item.";
+          }
+          leaf enum-name {
+            type string;
+            description "Name of the enumeration item.";
+          }
         }
+        container bits {
+          description "Item of a bits type.";
+          leaf bit-position {
+            type uint32;
+            description "Position of the bit item.";
+          }
+          leaf bit-name {
+            type string;
+            description "Name of the bit item.";
+          }
+        }
+      }
+      leaf-list keys {
+        type sid:sid;
+        ordered-by user;
+        description
+          "Present only when the item is a YANG list: SIDs of its
+           key leaves, in the order of the key statement.";
       }
     }
   }
@@ -765,7 +850,7 @@ developers to recall or verify SIDs during software development.
 * The tool is hosted at
   https://github.com/manojgudi/ccoreconf/tree/stub_generation/tools
 
-* For the SID file above (sensor@unknown.sid), the second argument in
+* For the SID file above (sensor@2026-11-02.sid), the second argument in
   the command- _"sensor_prototypes"_ instructs the tool to create two
   files _sensor_prototypes.h_ and _sensor_prototypes.c_ for writing
   headers and function code, respectively. To generate the C code,
@@ -773,7 +858,7 @@ developers to recall or verify SIDs during software development.
 
 
 ~~~~~bash
-$ python generateStubs.py sensor@unknown.sid "sensor_prototypes"
+$ python generateStubs.py sensor@2026-11-02.sid "sensor_prototypes"
 ~~~~~
 
 ~~~~~ c
@@ -987,9 +1072,9 @@ generated. For each leaf, pyang looks at its "type" statement:
 * for a union, the type of each member is reported. An identityref is
   placed first, since it is more specific than the other types.
 
-For each list, pyang also records the key leaves, in order, in a
-"key-mapping" entry. Their identifiers are replaced by their SIDs once
-the SIDs are allocated.
+For each list, pyang also records the key leaves, in order, in the
+"keys" leaf-list of its item. Their identifiers are replaced by their
+SIDs once the SIDs are allocated.
 
 
 
@@ -1010,7 +1095,7 @@ import binascii
 import cbor2 as cbor
 
 # Create the model object
-ccm = pycoreconf.CORECONFModel("sensor@unknown.sid")
+ccm = pycoreconf.CORECONFModel("sensor@2026-11-02.sid")
 
 # Read JSON configuration file
 config_file = "output.json"

@@ -33,7 +33,9 @@ module ietf-sid-file-extension {
       "The key-mapping at the sid-file level is replaced by the
        keys of each list item, since the root of the sid-file
        structure cannot be augmented (RFC 8791). The type and
-       the keys of an item are in a choice.";
+       the keys of an item are in a choice. The SID of the base
+       identity of an identityref is removed, since it is not
+       needed for the conversion.";
     reference "draft-toutain-core-sid-extension";
   }
 
@@ -174,10 +176,6 @@ module ietf-sid-file-extension {
         leaf base-type {
           type yang-type;
           description "YANG built-in type of the data node.";
-        }
-        leaf identityref {
-          type uint64;
-          description "SID of the referenced identity.";
         }
         container enumerate {
           description "Item of an enumeration.";
