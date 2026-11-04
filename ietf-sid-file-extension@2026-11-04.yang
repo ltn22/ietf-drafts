@@ -32,7 +32,9 @@ module ietf-sid-file-extension {
     description
       "The enumerate and bits containers are replaced by lists,
        since a leaf may define several enumeration items or several
-       bits.";
+       bits. The bits and enumeration identities are added. The
+       type container becomes a list, with one entry per member
+       type of a union, and the union identity is removed.";
     reference "draft-toutain-core-sid-extension";
   }
 
@@ -79,6 +81,11 @@ module ietf-sid-file-extension {
     description "YANG built-in type binary.";
   }
 
+  identity bits {
+    base yang-base-type;
+    description "YANG built-in type bits.";
+  }
+
   identity boolean {
     base yang-base-type;
     description "YANG built-in type boolean.";
@@ -92,6 +99,11 @@ module ietf-sid-file-extension {
   identity empty {
     base yang-base-type;
     description "YANG built-in type empty.";
+  }
+
+  identity enumeration {
+    base yang-base-type;
+    description "YANG built-in type enumeration.";
   }
 
   identity identityref {
@@ -154,11 +166,6 @@ module ietf-sid-file-extension {
     description "YANG built-in type uint64.";
   }
 
-  identity union {
-    base yang-base-type;
-    description "YANG built-in type union.";
-  }
-
   typedef yang-type {
     type identityref {
       base yang-base-type;
@@ -178,11 +185,14 @@ module ietf-sid-file-extension {
       description
         "Type information for a leaf or a leaf-list, or the key
          leaves for a list.";
-      container type {
+      list type {
+        ordered-by user;
         description
-          "Type of the data node identified by the SID.";
+          "Type of the data node identified by the SID: one entry,
+           or one entry per member type, in order, for a union.";
         leaf base-type {
           type yang-type;
+          mandatory true;
           description "YANG built-in type of the data node.";
         }
         list enumerate {

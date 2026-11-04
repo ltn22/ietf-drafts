@@ -54,6 +54,7 @@ normative:
   RFC2119:
   RFC6241:
   RFC7228:
+  RFC7950:
   RFC7951:
   RFC8040:
   RFC8949:
@@ -169,27 +170,49 @@ module sensor {
       "Represents the battery level using an identity.";
   }
 
+  typedef rgb-string {
+    type string {
+      pattern '#[0-9a-fA-F]{6}';
+    }
+    description
+      "Any color, as a hexadecimal RGB string (e.g., #FF8000).";
+  }
+
+  typedef rgb-integer {
+    type uint32 {
+      range "0..16777215";
+    }
+    description
+      "Any color, as a 24-bit RGB integer (e.g., 16744448 for
+       #FF8000).";
+  }
+
   container sensorObject {
     description
       "Represents a physical object containing sensors.";
 
     leaf statusLED {
-      type enumeration {
-        enum green {
-          value 0;
-          description "Green LED indicator.";
+      type union {
+        type enumeration {
+          enum green {
+            value 0;
+            description "Green LED indicator.";
+          }
+          enum yellow {
+            value 1;
+            description "Yellow LED indicator.";
+          }
+          enum red {
+            value 2;
+            description "Red LED indicator.";
+          }
         }
-        enum yellow {
-          value 1;
-          description "Yellow LED indicator.";
-        }
-        enum red {
-          value 2;
-          description "Red LED indicator.";
-        }
+        type rgb-string;
+        type rgb-integer;
       }
       description
-        "Indicates the status LED color.";
+        "Indicates the status LED color, either a predefined color
+         or any RGB value.";
     }
 
     leaf battery {
@@ -230,7 +253,7 @@ and a list ("sensorReadings").
 $ pyang -f tree sensor.yang 
 module: sensor
   +--rw sensorObject
-     +--rw statusLED?        enumeration
+     +--rw statusLED?        union
      +--rw battery?          battery-level
      +--rw sensorReadings* [index]
         +--rw index          uint8
@@ -344,7 +367,7 @@ SID is a 64-bit integer, its value is encoded as a JSON string
 
 The serialization in CBOR of the JSON example in {{Fig-JSON}} is given
 in {{Fig-CBOR}}. Compared to the compacted representation of the JSON
-structure (152 Bytes), the CORECONF structure is 24 bytes long. Although
+structure (152 Bytes), the CORECONF structure is 26 bytes long. Although
 the size is different, the structure remains the same. It is composed of
 embedded CBOR Maps (equivalent of JSON Object). The first key is a SID
 (60005 corresponds to the container). Embedded CBOR Maps use a delta
@@ -354,15 +377,16 @@ YANG list "sensorReadings", and the elements of the list are stored in a
 CBOR Array.
 
 Note that in this example, the enum for "statusLED" (60005+5) is an
-integer and the identityref for "battery" (60005+1) is also an integer
-pointing to the SID "med-level" (60004).
+integer, tagged with the CBOR tag 44 since the enumeration is a member of
+a union ({{RFC9254}}), and the identityref for "battery" (60005+1) is
+also an integer pointing to the SID "med-level" (60004).
 
 ~~~~
-b'a119ea65a305000119ea640282a2010002182aa201010216'
+b'a119ea65a305d82c000119ea640282a2010002182aa201010216'
 
 Diagnostic notation:
 {60005: 
-  {5: 0, 
+  {5: 44(0), 
    1: 60004, 
    2: [
      {1: 0, 
@@ -473,13 +497,13 @@ the extension, three kinds of items are distinguished
 | module, identity, feature, container, ... | none | -                 |
 {: #Tab-items title="Extension of the items of the .sid file."}
 
-A node is never both a leaf and a list. The "type" container and the
+A node is never both a leaf and a list. The "type" list and the
 "keys" leaf-list are therefore the two cases of a choice: an item
 contains one of them, or none. {{Fig-SID-extension}} shows the three
 kinds of items for the example module: the container "sensorObject"
 (60005) has no extension, the leaves "battery" (60006), "index" (60008),
-and "sensorValue" (60009) have a "type", and the list "sensorReadings"
-(60007) has "keys".
+"sensorValue" (60009), and "statusLED" (60010) have a "type", and the
+list "sensorReadings" (60007) has "keys".
 
 ~~~~
 ...
@@ -494,9 +518,11 @@ and "sensorValue" (60009) have a "type", and the list "sensorReadings"
         "identifier": "/sensor:sensorObject/battery",
         "status": "unstable",
         "sid": "60006",
-        "ietf-sid-file-extension:type": {
-          "base-type": "ietf-sid-file-extension:identityref"
-        }
+        "ietf-sid-file-extension:type": [
+          {
+            "base-type": "identityref"
+          }
+        ]
       },
       {
         "namespace": "data",
@@ -510,18 +536,44 @@ and "sensorValue" (60009) have a "type", and the list "sensorReadings"
         "identifier": "/sensor:sensorObject/sensorReadings/index",
         "status": "unstable",
         "sid": "60008",
-        "ietf-sid-file-extension:type": {
-          "base-type": "ietf-sid-file-extension:uint8"
-        }
+        "ietf-sid-file-extension:type": [
+          {
+            "base-type": "uint8"
+          }
+        ]
       },
       {
         "namespace": "data",
         "identifier": "/sensor:sensorObject/sensorReadings/sensorValue",
         "status": "unstable",
         "sid": "60009",
-        "ietf-sid-file-extension:type": {
-          "base-type": "ietf-sid-file-extension:uint32"
-        }
+        "ietf-sid-file-extension:type": [
+          {
+            "base-type": "uint32"
+          }
+        ]
+      },
+      {
+        "namespace": "data",
+        "identifier": "/sensor:sensorObject/statusLED",
+        "status": "unstable",
+        "sid": "60010",
+        "ietf-sid-file-extension:type": [
+          {
+            "base-type": "enumeration",
+            "enumerate": [
+              { "enum-value": 0, "enum-name": "green" },
+              { "enum-value": 1, "enum-name": "yellow" },
+              { "enum-value": 2, "enum-name": "red" }
+            ]
+          },
+          {
+            "base-type": "string"
+          },
+          {
+            "base-type": "uint32"
+          }
+        ]
       }
 ...
 ~~~~
@@ -530,12 +582,16 @@ and "sensorValue" (60009) have a "type", and the list "sensorReadings"
 
 ## Type of a Leaf {#sid-ext-type}
 
-The "type" container is added to each SID item that is a leaf or a
-leaf-list. Its "base-type" leaf identifies the YANG built-in type of the leaf. The
-sid-extension data model (cf. {{sid-ext-yang}}) defines an identityref
-for each YANG built-in type. If the model uses a derived type, defined
-by a typedef, "base-type" gives the built-in type it derives from, since
-a typedef is not an item of the .sid file ({{RFC9595}}).
+The "type" list is added to each SID item that is a leaf or a
+leaf-list. It contains one entry or, when the type is a union, one entry
+per member type. The "base-type" leaf of an entry identifies the YANG
+built-in type. The sid-extension data model (cf. {{sid-ext-yang}})
+defines an identity for each YANG built-in type. Since these identities
+and the "base-type" leaf are defined in the same module, the value is
+the name of the identity, without the module name ({{Section 6.8 of
+RFC7951}}). If the model uses a derived type, defined by a typedef,
+"base-type" gives the built-in type it derives from, since a typedef is
+not an item of the .sid file ({{RFC9595}}).
 
 For a type derived from an identityref, "base-type" is "identityref". In
 the CBOR notation, a pair "{ ...., SID1: value1, ...}" in the CBOR Map is
@@ -544,16 +600,26 @@ the type is "identityref", and a second lookup for value1 in the
 "identity" namespace, which returns the ASCII identifier. In the other
 direction, the ASCII identifier gives the SID of the identity. The base
 identity is not needed for the conversion, and is not given in the
-"type" container.
+"type" list.
 
-For an enumeration, the "enumerate" container associates a value
-("enum-value") with its name ("enum-name").
+For an enumeration, the "enumerate" list gives, for each enum statement,
+its value ("enum-value") and its name ("enum-name").
 
-For bits, the "bits" container associates a position ("bit-position")
-with its name ("bit-name").
+For bits, the "bits" list gives, for each bit statement, its position
+("bit-position") and its name ("bit-name").
 
-The container "type" may contain several structures reflecting a
-union, disambiguated by CORECONF through the use of CBOR tags.
+For a union, the entries are in the order of the member types, since a
+JSON value is interpreted with the first member type that matches it
+({{Section 9.12 of RFC7950}}). In {{Fig-SID-extension}}, the leaf
+"statusLED" is a union of an enumeration and of an RGB color, given
+either as a string or as a 24-bit integer, each defined by a typedef: its
+"type" list has three entries. The JSON value "red" is an item of the
+enumeration, "#FF8000" is only accepted by the string, and 16744448 by
+the integer. In CBOR, the enumeration value is tagged: the value 0 is
+the integer 0 (black), while 44(0) is the item "green" of the
+enumeration. Each entry carries its own "enumerate" or
+"bits" list. In CBOR, the member type of a value is indicated by a CBOR
+tag {{RFC9254}}.
 
 ## Keys of a List {#sid-ext-key-mapping}
 
@@ -598,7 +664,7 @@ item, either the type information of a leaf or a leaf-list, or the keys
 of a list.
 
 ~~~~ yang
-<CODE BEGINS> file "ietf-sid-file-extension@2026-11-03.yang"
+<CODE BEGINS> file "ietf-sid-file-extension@2026-11-04.yang"
 module ietf-sid-file-extension {
   yang-version 1.1;
   namespace "urn:ietf:params:xml:ns:yang:ietf-sid-file-extension";
@@ -628,6 +694,16 @@ module ietf-sid-file-extension {
     "Augmentation of ietf-sid-file to add, to each item, the type
      information of a leaf or a leaf-list, or the key leaves of a
      list.";
+
+  revision 2026-11-04 {
+    description
+      "The enumerate and bits containers are replaced by lists,
+       since a leaf may define several enumeration items or several
+       bits. The bits and enumeration identities are added. The
+       type container becomes a list, with one entry per member
+       type of a union, and the union identity is removed.";
+    reference "draft-toutain-core-sid-extension";
+  }
 
   revision 2026-11-03 {
     description
@@ -672,6 +748,11 @@ module ietf-sid-file-extension {
     description "YANG built-in type binary.";
   }
 
+  identity bits {
+    base yang-base-type;
+    description "YANG built-in type bits.";
+  }
+
   identity boolean {
     base yang-base-type;
     description "YANG built-in type boolean.";
@@ -685,6 +766,11 @@ module ietf-sid-file-extension {
   identity empty {
     base yang-base-type;
     description "YANG built-in type empty.";
+  }
+
+  identity enumeration {
+    base yang-base-type;
+    description "YANG built-in type enumeration.";
   }
 
   identity identityref {
@@ -747,11 +833,6 @@ module ietf-sid-file-extension {
     description "YANG built-in type uint64.";
   }
 
-  identity union {
-    base yang-base-type;
-    description "YANG built-in type union.";
-  }
-
   typedef yang-type {
     type identityref {
       base yang-base-type;
@@ -771,32 +852,44 @@ module ietf-sid-file-extension {
       description
         "Type information for a leaf or a leaf-list, or the key
          leaves for a list.";
-      container type {
+      list type {
+        ordered-by user;
         description
-          "Type of the data node identified by the SID.";
+          "Type of the data node identified by the SID: one entry,
+           or one entry per member type, in order, for a union.";
         leaf base-type {
           type yang-type;
+          mandatory true;
           description "YANG built-in type of the data node.";
         }
-        container enumerate {
-          description "Item of an enumeration.";
+        list enumerate {
+          key "enum-value";
+          unique "enum-name";
+          description
+            "Items of an enumeration. One entry per enum
+             statement.";
           leaf enum-value {
             type uint32;
             description "Value of the enumeration item.";
           }
           leaf enum-name {
             type string;
+            mandatory true;
             description "Name of the enumeration item.";
           }
         }
-        container bits {
-          description "Item of a bits type.";
+        list bits {
+          key "bit-position";
+          unique "bit-name";
+          description
+            "Items of a bits type. One entry per bit statement.";
           leaf bit-position {
             type uint32;
             description "Position of the bit item.";
           }
           leaf bit-name {
             type string;
+            mandatory true;
             description "Name of the bit item.";
           }
         }
@@ -1138,8 +1231,8 @@ Input JSON config data =
   }
 }
 
-Encoded CBOR data (CORECONF payload) = b'a119ea65a305000119ea640282a2010002182aa201010216'
-{60005: {5: 0, 1: 60004, 2: [{1: 0, 2: 42}, {1: 1, 2: 22}]}}
+Encoded CBOR data (CORECONF payload) = b'a119ea65a305d82c000119ea640282a2010002182aa201010216'
+{60005: {5: CBORTag(44, 0), 1: 60004, 2: [{1: 0, 2: 42}, {1: 1, 2: 22}]}}
 Decoded config data = {"sensor:sensorObject": {"statusLED": "green", "battery": "med-level", "sensorReadings": [{"index": 0, "sensorValue": 42}, {"index": 1, "sensorValue": 22}]}}
 ~~~~
 {: #Fig-pcc-res title="pycoreconf module."}
