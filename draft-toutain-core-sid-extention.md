@@ -170,55 +170,39 @@ module sensor {
       "Represents the battery level using an identity.";
   }
 
-  typedef rgb-string {
-    type string {
-      pattern '#[0-9a-fA-F]{6}';
-    }
-    description
-      "Any color, as a hexadecimal RGB string (e.g., #FF8000).";
-  }
-
-  typedef rgb-integer {
-    type uint32 {
-      range "0..16777215";
-    }
-    description
-      "Any color, as a 24-bit RGB integer (e.g., 16744448 for
-       #FF8000).";
-  }
-
   container sensorObject {
     description
       "Represents a physical object containing sensors.";
 
     leaf statusLED {
-      type union {
-        type enumeration {
-          enum green {
-            value 0;
-            description "Green LED indicator.";
-          }
-          enum yellow {
-            value 1;
-            description "Yellow LED indicator.";
-          }
-          enum red {
-            value 2;
-            description "Red LED indicator.";
-          }
+      type enumeration {
+        enum green {
+          value 0;
+          description "Green LED indicator.";
         }
-        type rgb-string;
-        type rgb-integer;
+        enum yellow {
+          value 1;
+          description "Yellow LED indicator.";
+        }
+        enum red {
+          value 2;
+          description "Red LED indicator.";
+        }
       }
       description
-        "Indicates the status LED color, either a predefined color
-         or any RGB value.";
+        "Indicates the status LED color.";
     }
 
     leaf battery {
-      type battery-level;
+      type union {
+        type battery-level;
+        type uint8 {
+          range "0..100";
+        }
+      }
       description
-        "Indicates the battery level.";
+        "Indicates the battery level, either as a qualitative level
+         or as a percentage.";
     }
 
     list sensorReadings {
@@ -253,8 +237,8 @@ and a list ("sensorReadings").
 $ pyang -f tree sensor.yang 
 module: sensor
   +--rw sensorObject
-     +--rw statusLED?        union
-     +--rw battery?          battery-level
+     +--rw statusLED?        enumeration
+     +--rw battery?          union
      +--rw sensorReadings* [index]
         +--rw index          uint8
         +--rw sensorValue?   uint32
@@ -367,7 +351,7 @@ SID is a 64-bit integer, its value is encoded as a JSON string
 
 The serialization in CBOR of the JSON example in {{Fig-JSON}} is given
 in {{Fig-CBOR}}. Compared to the compacted representation of the JSON
-structure (152 Bytes), the CORECONF structure is 26 bytes long. Although
+structure (151 bytes), the CORECONF structure is 26 bytes long. Although
 the size is different, the structure remains the same. It is composed of
 embedded CBOR Maps (equivalent of JSON Object). The first key is a SID
 (60005 corresponds to the container). Embedded CBOR Maps use a delta
@@ -377,17 +361,19 @@ YANG list "sensorReadings", and the elements of the list are stored in a
 CBOR Array.
 
 Note that in this example, the enum for "statusLED" (60005+5) is an
-integer, tagged with the CBOR tag 44 since the enumeration is a member of
-a union ({{RFC9254}}), and the identityref for "battery" (60005+1) is
-also an integer pointing to the SID "med-level" (60004).
+integer, and the identityref for "battery" (60005+1) is also an integer
+pointing to the SID "med-level" (60004). Since "battery" is a union of an
+identityref and of an integer, the identityref is enclosed by the CBOR
+tag 45 ({{Section 6.12 of RFC9254}}): 45(60004) is the identity
+"med-level", while 42 would be a percentage.
 
 ~~~~
-b'a119ea65a305d82c000119ea640282a2010002182aa201010216'
+b'a119ea65a3050001d82d19ea640282a2010002182aa201010216'
 
 Diagnostic notation:
 {60005: 
-  {5: 44(0), 
-   1: 60004, 
+  {5: 0, 
+   1: 45(60004), 
    2: [
      {1: 0, 
       2: 42}, 
@@ -521,6 +507,9 @@ list "sensorReadings" (60007) has "keys".
         "ietf-sid-file-extension:type": [
           {
             "base-type": "identityref"
+          },
+          {
+            "base-type": "uint8"
           }
         ]
       },
@@ -566,12 +555,6 @@ list "sensorReadings" (60007) has "keys".
               { "enum-value": 1, "enum-name": "yellow" },
               { "enum-value": 2, "enum-name": "red" }
             ]
-          },
-          {
-            "base-type": "string"
-          },
-          {
-            "base-type": "uint32"
           }
         ]
       }
@@ -608,18 +591,25 @@ its value ("enum-value") and its name ("enum-name").
 For bits, the "bits" list gives, for each bit statement, its position
 ("bit-position") and its name ("bit-name").
 
+The "enumerate" list is only present in an entry whose "base-type" is
+"enumeration". In the same way, the "bits" list is only present in an
+entry whose "base-type" is "bits". For a
+union, each entry carries the items of its own member type: for
+instance, a union of an enumeration and of bits has an entry with an
+"enumerate" list, followed by an entry with a "bits" list.
+
 For a union, the entries are in the order of the member types, since a
 JSON value is interpreted with the first member type that matches it
-({{Section 9.12 of RFC7950}}). In {{Fig-SID-extension}}, the leaf
-"statusLED" is a union of an enumeration and of an RGB color, given
-either as a string or as a 24-bit integer, each defined by a typedef: its
-"type" list has three entries. The JSON value "red" is an item of the
-enumeration, "#FF8000" is only accepted by the string, and 16744448 by
-the integer. In CBOR, the enumeration value is tagged: the value 0 is
-the integer 0 (black), while 44(0) is the item "green" of the
-enumeration. Each entry carries its own "enumerate" or
+({{Section 9.12 of RFC7950}}). Each entry carries its own "enumerate" or
 "bits" list. In CBOR, the member type of a value is indicated by a CBOR
 tag {{RFC9254}}.
+
+In {{Fig-SID-extension}}, the leaf "battery" is a union of an
+identityref, giving a qualitative level, and of an integer, giving a
+percentage: its "type" list has two entries. The JSON value
+"sensor:med-level" is an identity, and 42 is a percentage. In CBOR, both
+are integers, and the identityref is enclosed by the CBOR tag 45:
+45(60004) is the identity "med-level", while 42 is the percentage.
 
 ## Keys of a List {#sid-ext-key-mapping}
 
@@ -701,7 +691,9 @@ module ietf-sid-file-extension {
        since a leaf may define several enumeration items or several
        bits. The bits and enumeration identities are added. The
        type container becomes a list, with one entry per member
-       type of a union, and the union identity is removed.";
+       type of a union, and the union identity is removed. The
+       enumerate and bits lists are only present in an entry of
+       the corresponding type, and enum-value is an int32.";
     reference "draft-toutain-core-sid-extension";
   }
 
@@ -863,13 +855,15 @@ module ietf-sid-file-extension {
           description "YANG built-in type of the data node.";
         }
         list enumerate {
+          when "derived-from-or-self(../base-type, "
+             + "'sid-ext:enumeration')";
           key "enum-value";
           unique "enum-name";
           description
             "Items of an enumeration. One entry per enum
              statement.";
           leaf enum-value {
-            type uint32;
+            type int32;
             description "Value of the enumeration item.";
           }
           leaf enum-name {
@@ -879,6 +873,7 @@ module ietf-sid-file-extension {
           }
         }
         list bits {
+          when "derived-from-or-self(../base-type, 'sid-ext:bits')";
           key "bit-position";
           unique "bit-name";
           description
@@ -1231,8 +1226,8 @@ Input JSON config data =
   }
 }
 
-Encoded CBOR data (CORECONF payload) = b'a119ea65a305d82c000119ea640282a2010002182aa201010216'
-{60005: {5: CBORTag(44, 0), 1: 60004, 2: [{1: 0, 2: 42}, {1: 1, 2: 22}]}}
+Encoded CBOR data (CORECONF payload) = b'a119ea65a3050001d82d19ea640282a2010002182aa201010216'
+{60005: {5: 0, 1: CBORTag(45, 60004), 2: [{1: 0, 2: 42}, {1: 1, 2: 22}]}}
 Decoded config data = {"sensor:sensorObject": {"statusLED": "green", "battery": "med-level", "sensorReadings": [{"index": 0, "sensorValue": 42}, {"index": 1, "sensorValue": 22}]}}
 ~~~~
 {: #Fig-pcc-res title="pycoreconf module."}
