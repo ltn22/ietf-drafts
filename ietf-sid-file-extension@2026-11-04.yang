@@ -34,7 +34,9 @@ module ietf-sid-file-extension {
        since a leaf may define several enumeration items or several
        bits. The bits and enumeration identities are added. The
        type container becomes a list, with one entry per member
-       type of a union, and the union identity is removed.";
+       type of a union, and the union identity is removed. The
+       enumerate and bits lists are only present in an entry of
+       the corresponding type, and enum-value is an int32.";
     reference "draft-toutain-core-sid-extension";
   }
 
@@ -196,13 +198,15 @@ module ietf-sid-file-extension {
           description "YANG built-in type of the data node.";
         }
         list enumerate {
+          when "derived-from-or-self(../base-type, "
+             + "'sid-ext:enumeration')";
           key "enum-value";
           unique "enum-name";
           description
             "Items of an enumeration. One entry per enum
              statement.";
           leaf enum-value {
-            type uint32;
+            type int32;
             description "Value of the enumeration item.";
           }
           leaf enum-name {
@@ -212,6 +216,7 @@ module ietf-sid-file-extension {
           }
         }
         list bits {
+          when "derived-from-or-self(../base-type, 'sid-ext:bits')";
           key "bit-position";
           unique "bit-name";
           description
